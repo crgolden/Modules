@@ -1,0 +1,43 @@
+{
+  "name": "@crgolden/modules",
+  "version": "0.1.0",
+  "description": "Shared TypeScript modules for the crgolden fleet, published as one package with one subpath export per module.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/crgolden/Modules.git"
+  },
+  "exports": {
+    "./*": {
+      "types": "./dist/*/index.d.ts",
+      "default": "./dist/*/index.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "*": ["dist/*/index.d.ts"]
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "peerDependencies": {
+    "@playwright/test": ">=1.60.0 <2"
+  },
+  "peerDependenciesMeta": {
+    "@playwright/test": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
