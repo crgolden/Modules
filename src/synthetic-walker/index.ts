@@ -9,6 +9,7 @@ export const DEFAULT_STEP_BUDGET = 40;
 export const MAX_STEP_BUDGET = 500;
 export const DEFAULT_THINK_TIME_MS_RANGE: readonly [number, number] = [1500, 4000];
 export const LOGIN_TIMEOUT_MS = 30_000;
+export const HYDRATION_TIMEOUT_MS = 30_000;
 
 const UINT32_MAX = 0xffffffff;
 const UINT32_RANGE = 2 ** 32;
@@ -131,6 +132,11 @@ export async function loginThroughIdentity(page: Page, options: LoginOptions): P
   await page.fill("input[name='Input.Password']", password);
   await page.click('#login-submit');
   await page.waitForURL(url => url.origin !== identityOrigin && url.pathname.startsWith(returnPath), { timeout: LOGIN_TIMEOUT_MS });
+  await waitForAngularHydration(page);
+}
+
+export async function waitForAngularHydration(page: Page, timeoutMs: number = HYDRATION_TIMEOUT_MS): Promise<void> {
+  await page.waitForFunction(() => document.querySelectorAll('[ngh]').length === 0, undefined, { timeout: timeoutMs });
 }
 
 export function prefixLocator(page: Page, idPrefix: string): Locator {
@@ -173,6 +179,7 @@ export async function walk(page: Page, actions: readonly WalkerAction[], options
   testInfo.annotations.push({ type: 'synthetic-seed', description: String(seed) });
   let executedSteps = 0;
   for (let stepIndex = 1; stepIndex <= steps; stepIndex += 1) {
+    await waitForAngularHydration(page);
     const availability = await Promise.all(actions.map(action => action.available(page)));
     const availableActions = actions.filter((_, index) => availability[index]);
     if (availableActions.length === 0) {

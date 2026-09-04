@@ -1,6 +1,6 @@
 {
   "name": "@crgolden/modules",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Shared TypeScript modules for the crgolden fleet, published as one package with one subpath export per module.",
   "repository": {
     "type": "git",
