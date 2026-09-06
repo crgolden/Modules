@@ -1,14 +1,14 @@
 import { test, type Locator, type Page, type TestInfo } from '@playwright/test';
 
-export const SYNTHETIC_MARKER_HEADER = 'X-Synthetic-Marker';
 export const CRGOLDEN_IDENTITY_ORIGIN = 'https://crgolden-identity.azurewebsites.net';
-export const SYNTHETIC_RECAPTCHA_TOKEN = 'synthetic-walker-token';
+export const PASSKEY_SUBMIT_SELECTOR = '#passkey-submit';
+export const IDENTITY_LOGIN_PATH = '/Account/Login';
 
-const RECAPTCHA_SCRIPT_URL_GLOB = 'https://www.google.com/recaptcha/**';
 export const DEFAULT_STEP_BUDGET = 40;
 export const MAX_STEP_BUDGET = 500;
 export const DEFAULT_THINK_TIME_MS_RANGE: readonly [number, number] = [1500, 4000];
 export const LOGIN_TIMEOUT_MS = 30_000;
+export const PASSKEY_SUBMIT_TIMEOUT_MS = 15_000;
 export const HYDRATION_TIMEOUT_MS = 30_000;
 
 const UINT32_MAX = 0xffffffff;
@@ -40,16 +40,31 @@ export interface WalkResult {
   executedSteps: number;
 }
 
-export interface SyntheticCredentials {
-  username: string;
-  password: string;
-  marker: string;
+export type CredentialSlot = 1 | 2 | 3;
+
+export interface PasskeyCredential {
+  id: string;
+  rpId: string;
+  userHandle: string;
+  privateKey: string;
+  publicKey: string;
+}
+
+export interface SyntheticAccount {
+  email: string;
+  credential: PasskeyCredential;
 }
 
 export interface LoginOptions {
+  slot: CredentialSlot;
   returnParam: 'returnUrl' | 'returnTo';
   returnPath: string;
   identityOrigin?: string;
+}
+
+export interface IdentityLoginOptions {
+  slot: CredentialSlot;
+  returnPath?: string;
 }
 
 export function mulberry32(seed: number): () => number {
@@ -102,37 +117,84 @@ export function resolveStepBudget(defaultSteps: number = DEFAULT_STEP_BUDGET): n
   return steps;
 }
 
-export function resolveSyntheticCredentials(): SyntheticCredentials {
-  const username = process.env['TEST_USERNAME'];
-  const password = process.env['TEST_PASSWORD'];
-  const marker = process.env['SYNTHETIC_MARKER'];
-  if (!username || !password || !marker) {
-    throw new Error('TEST_USERNAME, TEST_PASSWORD, and SYNTHETIC_MARKER must all be set for a synthetic walk.');
+function requireString(source: Record<string, unknown>, field: string, envName: string): string {
+  const value = source[field];
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`${envName} is missing the non-empty string field '${field}'.`);
   }
-  return { username, password, marker };
+  return value;
 }
 
-export async function loginThroughIdentity(page: Page, options: LoginOptions): Promise<void> {
-  const { username, password, marker } = resolveSyntheticCredentials();
-  const { returnParam, returnPath } = options;
-  const identityOrigin = options.identityOrigin ?? CRGOLDEN_IDENTITY_ORIGIN;
-  await page.context().route(`${identityOrigin}/**`, route =>
-    route.continue({ headers: { ...route.request().headers(), [SYNTHETIC_MARKER_HEADER]: marker } }));
-  await page.context().addInitScript(
-    token => {
-      (globalThis as { grecaptcha?: unknown }).grecaptcha = {
-        ready: (callback: () => void) => callback(),
-        execute: () => Promise.resolve(token),
-      };
+export function resolveSyntheticAccount(slot: CredentialSlot): SyntheticAccount {
+  const emailName = `EMAIL${slot}`;
+  const credentialName = `PASSKEY_CREDENTIAL${slot}`;
+  const email = process.env[emailName];
+  const rawCredential = process.env[credentialName];
+  if (!email || !rawCredential) {
+    throw new Error(`${emailName} and ${credentialName} must both be set for a synthetic walk.`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawCredential);
+  } catch (cause) {
+    throw new Error(`${credentialName} is not valid JSON.`, { cause });
+  }
+  if (typeof parsed !== 'object' || parsed === null) {
+    throw new Error(`${credentialName} must be a JSON object holding the five passkey fields.`);
+  }
+  const fields = parsed as Record<string, unknown>;
+  return {
+    email,
+    credential: {
+      id: requireString(fields, 'id', credentialName),
+      rpId: requireString(fields, 'rpId', credentialName),
+      userHandle: requireString(fields, 'userHandle', credentialName),
+      privateKey: requireString(fields, 'privateKey', credentialName),
+      publicKey: requireString(fields, 'publicKey', credentialName),
     },
-    SYNTHETIC_RECAPTCHA_TOKEN);
-  await page.context().route(RECAPTCHA_SCRIPT_URL_GLOB, route => route.abort());
+  };
+}
+
+export async function seedPasskey(page: Page, credential: PasskeyCredential): Promise<void> {
+  const context = page.context();
+  await context.credentials.create(credential.rpId, credential);
+  await context.credentials.install();
+}
+
+function isOnIdentityLoginPage(page: Page): boolean {
+  return new URL(page.url()).pathname.startsWith(IDENTITY_LOGIN_PATH);
+}
+
+async function submitPasskeyLogin(page: Page, email: string): Promise<void> {
+  await page.fill("input[name='Input.Email']", email);
+  try {
+    await page.locator(PASSKEY_SUBMIT_SELECTOR).click({ timeout: PASSKEY_SUBMIT_TIMEOUT_MS });
+  } catch (cause) {
+    const conditionalMediationAlreadySubmittedTheForm = !isOnIdentityLoginPage(page);
+    if (!conditionalMediationAlreadySubmittedTheForm) {
+      throw cause;
+    }
+  }
+}
+
+export async function loginWithPasskey(page: Page, options: LoginOptions): Promise<void> {
+  const { slot, returnParam, returnPath } = options;
+  const identityOrigin = options.identityOrigin ?? CRGOLDEN_IDENTITY_ORIGIN;
+  const { email, credential } = resolveSyntheticAccount(slot);
+  await seedPasskey(page, credential);
   await page.goto(`/bff/login?${returnParam}=${encodeURIComponent(returnPath)}`);
-  await page.fill("input[name='Input.Email']", username);
-  await page.fill("input[name='Input.Password']", password);
-  await page.click('#login-submit');
+  await submitPasskeyLogin(page, email);
   await page.waitForURL(url => url.origin !== identityOrigin && url.pathname.startsWith(returnPath), { timeout: LOGIN_TIMEOUT_MS });
   await waitForAngularHydration(page);
+}
+
+export async function loginToIdentityWithPasskey(page: Page, options: IdentityLoginOptions): Promise<void> {
+  const returnPath = options.returnPath ?? '/';
+  const { email, credential } = resolveSyntheticAccount(options.slot);
+  await seedPasskey(page, credential);
+  await page.goto(`${IDENTITY_LOGIN_PATH}?ReturnUrl=${encodeURIComponent(returnPath)}`);
+  await submitPasskeyLogin(page, email);
+  await page.waitForURL(url => !url.pathname.startsWith(IDENTITY_LOGIN_PATH), { timeout: LOGIN_TIMEOUT_MS });
 }
 
 export async function waitForAngularHydration(page: Page, timeoutMs: number = HYDRATION_TIMEOUT_MS): Promise<void> {

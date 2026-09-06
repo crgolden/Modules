@@ -1,6 +1,6 @@
 {
   "name": "@crgolden/modules",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Shared TypeScript modules for the crgolden fleet, published as one package with one subpath export per module.",
   "repository": {
     "type": "git",
@@ -22,13 +22,14 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "enroll-passkey": "npm run build && node dist/synthetic-walker/enroll-passkey.js",
     "prepack": "npm run build"
   },
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
   },
   "peerDependencies": {
-    "@playwright/test": ">=1.60.0 <2"
+    "@playwright/test": ">=1.61.0 <2"
   },
   "peerDependenciesMeta": {
     "@playwright/test": {
