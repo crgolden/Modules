@@ -1,9 +1,10 @@
-import { chromium } from '@playwright/test';
-import { CRGOLDEN_IDENTITY_ORIGIN, IDENTITY_LOGIN_PATH } from './index';
+import { chromium, type BrowserContext } from '@playwright/test';
+import { CRGOLDEN_IDENTITY_ORIGIN, IDENTITY_LOGIN_PATH, installCredentialSerializationShim } from './index';
 
 const MANAGE_PASSKEYS_PATH = '/Account/Manage/Passkeys';
+const RENAME_PASSKEY_PATH = '/Account/Manage/RenamePasskey';
 const ADD_PASSKEY_SELECTOR = '#add-passkey';
-const PASSKEY_ROW_SELECTOR = '[id^="passkey-row-"]';
+const STATUS_MESSAGE_SELECTOR = '#status-message';
 const ENROLLMENT_TIMEOUT_MS = 300_000;
 
 function refuseUnderAutomation(): void {
@@ -22,6 +23,17 @@ function resolveTarget(): { origin: string; email: string } {
   return { origin, email };
 }
 
+async function installEmptyAuthenticator(context: BrowserContext, rpId: string): Promise<void> {
+  await context.credentials.install();
+  const alreadyPresent = await context.credentials.get({ rpId });
+  if (alreadyPresent.length > 0) {
+    throw new Error(
+      'The virtual authenticator must be empty until the operator has signed in. A credential seeded up front lets the ' +
+      "login page's conditional-mediation autofill submit an assertion Identity has never seen, which re-renders Login " +
+      'and reloads forever. The passkey is minted by the Add passkey button, never seeded here.');
+  }
+}
+
 export async function enrollPasskey(): Promise<void> {
   refuseUnderAutomation();
   const { origin, email } = resolveTarget();
@@ -30,10 +42,24 @@ export async function enrollPasskey(): Promise<void> {
   const browser = await chromium.launch({ headless: false });
   try {
     const context = await browser.newContext({ baseURL: origin });
-    await context.credentials.install();
-    const credential = await context.credentials.create(rpId);
+    await installEmptyAuthenticator(context, rpId);
+    await installCredentialSerializationShim(context);
 
     const page = await context.newPage();
+    page.on('console', message => {
+      if (message.type() === 'error') {
+        process.stderr.write(`[page error] ${message.text()}\n`);
+      }
+    });
+    page.on('requestfailed', request => {
+      process.stderr.write(`[request failed] ${request.url()} - ${request.failure()?.errorText ?? 'unknown'}\n`);
+    });
+    page.on('response', response => {
+      if (response.status() >= 400) {
+        process.stderr.write(`[http ${response.status()}] ${response.url()}\n`);
+      }
+    });
+
     await page.goto(`${IDENTITY_LOGIN_PATH}?ReturnUrl=${encodeURIComponent(MANAGE_PASSKEYS_PATH)}`);
 
     process.stdout.write(
@@ -42,20 +68,29 @@ export async function enrollPasskey(): Promise<void> {
       `This script waits for you, then registers the passkey and prints the credential.\n\n`);
 
     await page.waitForURL(url => url.pathname.startsWith(MANAGE_PASSKEYS_PATH), { timeout: ENROLLMENT_TIMEOUT_MS });
-    const rowsBefore = await page.locator(PASSKEY_ROW_SELECTOR).count();
     await page.click(ADD_PASSKEY_SELECTOR);
-    await page.waitForFunction(
-      ([selector, before]) => document.querySelectorAll(selector as string).length > (before as number),
-      [PASSKEY_ROW_SELECTOR, rowsBefore],
-      { timeout: ENROLLMENT_TIMEOUT_MS });
+
+    const registrationSucceeded = page
+      .waitForURL(url => url.pathname.startsWith(RENAME_PASSKEY_PATH), { timeout: ENROLLMENT_TIMEOUT_MS })
+      .then(() => true, () => false);
+    const registrationReported = page
+      .locator(STATUS_MESSAGE_SELECTOR)
+      .waitFor({ timeout: ENROLLMENT_TIMEOUT_MS })
+      .then(() => false, () => false);
+    await Promise.race([registrationSucceeded, registrationReported]);
+
+    if (!new URL(page.url()).pathname.startsWith(RENAME_PASSKEY_PATH)) {
+      const reported = await page.locator(STATUS_MESSAGE_SELECTOR).innerText();
+      throw new Error(`Identity refused the passkey: ${reported.trim()}`);
+    }
 
     const stored = await context.credentials.get({ rpId });
-    const registered = stored.find(candidate => candidate.id === credential.id);
-    if (!registered) {
+    if (stored.length !== 1) {
       throw new Error(
-        'Identity accepted a passkey, but the authenticator no longer holds the credential this script seeded. ' +
-        'Storing a different one would produce a secret that cannot sign in; refusing.');
+        `Identity registered a passkey, but the authenticator holds ${stored.length} credentials for ${rpId} rather than ` +
+        'the one the Add passkey button just minted. Storing the wrong one would produce a secret that cannot sign in; refusing.');
     }
+    const [registered] = stored;
 
     process.stdout.write(
       `\nEnrollment complete. Store this verbatim as the repo's PASSKEY_CREDENTIAL<n> secret:\n\n` +

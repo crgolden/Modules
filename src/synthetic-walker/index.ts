@@ -1,4 +1,4 @@
-import { test, type Locator, type Page, type TestInfo } from '@playwright/test';
+import { test, type BrowserContext, type Locator, type Page, type TestInfo } from '@playwright/test';
 
 export const CRGOLDEN_IDENTITY_ORIGIN = 'https://crgolden-identity.azurewebsites.net';
 export const PASSKEY_SUBMIT_SELECTOR = '#passkey-submit';
@@ -155,10 +155,73 @@ export function resolveSyntheticAccount(slot: CredentialSlot): SyntheticAccount 
   };
 }
 
+const CREDENTIAL_SERIALIZATION_SHIM = `
+(() => {
+  const toBase64Url = buffer => {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (const byte of bytes) {
+      binary += String.fromCharCode(byte);
+    }
+    return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+  };
+  const buildJson = credential => {
+    const source = credential.response;
+    const response = source instanceof AuthenticatorAttestationResponse
+      ? {
+          clientDataJSON: toBase64Url(source.clientDataJSON),
+          attestationObject: toBase64Url(source.attestationObject),
+          transports: source.getTransports ? source.getTransports() : [],
+        }
+      : {
+          clientDataJSON: toBase64Url(source.clientDataJSON),
+          authenticatorData: toBase64Url(source.authenticatorData),
+          signature: toBase64Url(source.signature),
+          userHandle: source.userHandle ? toBase64Url(source.userHandle) : undefined,
+        };
+    return {
+      id: credential.id,
+      rawId: toBase64Url(credential.rawId),
+      type: credential.type,
+      authenticatorAttachment: credential.authenticatorAttachment ?? undefined,
+      clientExtensionResults: credential.getClientExtensionResults(),
+      response,
+    };
+  };
+
+  // The virtual authenticator attaches its own toJSON that serialises response as {}, and an own
+  // property shadows anything installed on PublicKeyCredential.prototype, so the fix has to land
+  // on each credential as it is produced. Init scripts run in registration order and
+  // credentials.install() registers its own navigator.credentials patch, so this one is only
+  // effective when it is registered after that call.
+  const withWorkingSerialization = credential => {
+    if (credential) {
+      Object.defineProperty(credential, 'toJSON', {
+        configurable: true,
+        writable: true,
+        value: () => buildJson(credential),
+      });
+    }
+    return credential;
+  };
+
+  const originalCreate = navigator.credentials.create.bind(navigator.credentials);
+  const originalGet = navigator.credentials.get.bind(navigator.credentials);
+  navigator.credentials.create = options => originalCreate(options).then(withWorkingSerialization);
+  navigator.credentials.get = options => originalGet(options).then(withWorkingSerialization);
+  window.__crgoldenCredentialShimInstalled = true;
+})();
+`;
+
+export async function installCredentialSerializationShim(context: BrowserContext): Promise<void> {
+  await context.addInitScript(CREDENTIAL_SERIALIZATION_SHIM);
+}
+
 export async function seedPasskey(page: Page, credential: PasskeyCredential): Promise<void> {
   const context = page.context();
   await context.credentials.create(credential.rpId, credential);
   await context.credentials.install();
+  await installCredentialSerializationShim(context);
 }
 
 function isOnIdentityLoginPage(page: Page): boolean {
