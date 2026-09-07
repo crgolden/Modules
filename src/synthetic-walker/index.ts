@@ -9,6 +9,7 @@ export const MAX_STEP_BUDGET = 500;
 export const DEFAULT_THINK_TIME_MS_RANGE: readonly [number, number] = [1500, 4000];
 export const LOGIN_TIMEOUT_MS = 30_000;
 export const PASSKEY_SUBMIT_TIMEOUT_MS = 15_000;
+export const AUTOFILL_GRACE_MS = 5_000;
 export const HYDRATION_TIMEOUT_MS = 30_000;
 
 const UINT32_MAX = 0xffffffff;
@@ -157,14 +158,11 @@ export function resolveSyntheticAccount(slot: CredentialSlot): SyntheticAccount 
 
 const CREDENTIAL_SERIALIZATION_SHIM = `
 (() => {
-  const toBase64Url = buffer => {
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (const byte of bytes) {
-      binary += String.fromCharCode(byte);
-    }
-    return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
-  };
+  const toBase64Url = buffer =>
+    btoa(String.fromCharCode(...new Uint8Array(buffer)))
+      .replaceAll('+', '-')
+      .replaceAll('/', '_')
+      .replace(/=+$/, '');
   const buildJson = credential => {
     const source = credential.response;
     const response = source instanceof AuthenticatorAttestationResponse
@@ -189,11 +187,6 @@ const CREDENTIAL_SERIALIZATION_SHIM = `
     };
   };
 
-  // The virtual authenticator attaches its own toJSON that serialises response as {}, and an own
-  // property shadows anything installed on PublicKeyCredential.prototype, so the fix has to land
-  // on each credential as it is produced. Init scripts run in registration order and
-  // credentials.install() registers its own navigator.credentials patch, so this one is only
-  // effective when it is registered after that call.
   const withWorkingSerialization = credential => {
     if (credential) {
       Object.defineProperty(credential, 'toJSON', {
@@ -228,9 +221,22 @@ function isOnIdentityLoginPage(page: Page): boolean {
   return new URL(page.url()).pathname.startsWith(IDENTITY_LOGIN_PATH);
 }
 
-async function submitPasskeyLogin(page: Page, email: string): Promise<void> {
-  await page.fill("input[name='Input.Email']", email);
+async function autofillSignedIn(page: Page): Promise<boolean> {
   try {
+    await page.locator("input[name='Input.Email']").waitFor({ timeout: AUTOFILL_GRACE_MS });
+  } catch {
+    return !isOnIdentityLoginPage(page);
+  }
+  return !isOnIdentityLoginPage(page);
+}
+
+async function submitPasskeyLogin(page: Page, email: string): Promise<void> {
+  if (await autofillSignedIn(page)) {
+    return;
+  }
+
+  try {
+    await page.fill("input[name='Input.Email']", email);
     await page.locator(PASSKEY_SUBMIT_SELECTOR).click({ timeout: PASSKEY_SUBMIT_TIMEOUT_MS });
   } catch (cause) {
     const conditionalMediationAlreadySubmittedTheForm = !isOnIdentityLoginPage(page);
