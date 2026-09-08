@@ -36,14 +36,6 @@ function resolveTarget(): { origin: string; email: string } {
   return { origin, email };
 }
 
-// reCAPTCHA v3 scores the browser, not the person driving it, and it has no challenge a human can pass.
-// An automation-driven Chromium therefore scores near zero and password login fails here exactly as it
-// does for the walkers - which is why the walkers use passkeys in the first place. The session is created
-// in the operator's ordinary browser instead and carried in; only the credential has to be minted here,
-// because the virtual authenticator exists nowhere else.
-//
-// Identity chunks an oversized auth cookie into `<name>C1`, `<name>C2`, so a JSON array of {name, value}
-// is accepted as well as a bare value - transferring only the first chunk authenticates nothing.
 function readSessionCookies(origin: string): SessionCookie[] | null {
   const cookieFile = process.env['ENROLL_SESSION_COOKIE_FILE'];
   if (!cookieFile) {
@@ -149,7 +141,10 @@ export async function enrollPasskey(): Promise<void> {
     ]);
     await page.waitForLoadState();
 
-    if (!new URL(page.url()).pathname.startsWith(RENAME_PASSKEY_PATH)) {
+    const redirectedToRename = await page
+      .waitForURL(url => url.pathname.startsWith(RENAME_PASSKEY_PATH), { timeout: ENROLLMENT_TIMEOUT_MS })
+      .then(() => true, () => false);
+    if (!redirectedToRename) {
       const reported = await page.locator(STATUS_MESSAGE_SELECTOR).innerText();
       throw new Error(`Identity refused the passkey: ${reported.trim()}`);
     }
