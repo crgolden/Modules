@@ -221,29 +221,22 @@ function isOnIdentityLoginPage(page: Page): boolean {
   return new URL(page.url()).pathname.startsWith(IDENTITY_LOGIN_PATH);
 }
 
-async function autofillSignedIn(page: Page): Promise<boolean> {
+async function autofillNavigatedAway(page: Page): Promise<boolean> {
   try {
-    await page.locator("input[name='Input.Email']").waitFor({ timeout: AUTOFILL_GRACE_MS });
+    await page.waitForURL(url => !url.pathname.startsWith(IDENTITY_LOGIN_PATH), { timeout: AUTOFILL_GRACE_MS });
+    return true;
   } catch {
-    return !isOnIdentityLoginPage(page);
+    return false;
   }
-  return !isOnIdentityLoginPage(page);
 }
 
 async function submitPasskeyLogin(page: Page, email: string): Promise<void> {
-  if (await autofillSignedIn(page)) {
+  if (await autofillNavigatedAway(page)) {
     return;
   }
 
-  try {
-    await page.fill("input[name='Input.Email']", email);
-    await page.locator(PASSKEY_SUBMIT_SELECTOR).click({ timeout: PASSKEY_SUBMIT_TIMEOUT_MS });
-  } catch (cause) {
-    const conditionalMediationAlreadySubmittedTheForm = !isOnIdentityLoginPage(page);
-    if (!conditionalMediationAlreadySubmittedTheForm) {
-      throw cause;
-    }
-  }
+  await page.fill("input[name='Input.Email']", email);
+  await page.locator(PASSKEY_SUBMIT_SELECTOR).click({ timeout: PASSKEY_SUBMIT_TIMEOUT_MS });
 }
 
 export async function loginWithPasskey(page: Page, options: LoginOptions): Promise<void> {
