@@ -1,5 +1,18 @@
+import { readFileSync } from 'node:fs';
 import { chromium, type BrowserContext } from '@playwright/test';
 import { CRGOLDEN_IDENTITY_ORIGIN, IDENTITY_LOGIN_PATH, installCredentialSerializationShim } from './index';
+
+type SessionCookie = {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  httpOnly: boolean;
+  secure: boolean;
+  sameSite: 'Lax';
+};
+
+const SESSION_COOKIE_NAME = '.AspNetCore.Identity.Application';
 
 const MANAGE_PASSKEYS_PATH = '/Account/Manage/Passkeys';
 const RENAME_PASSKEY_PATH = '/Account/Manage/RenamePasskey';
@@ -21,6 +34,50 @@ function resolveTarget(): { origin: string; email: string } {
     throw new Error('ENROLL_EMAIL must be set to the account you are enrolling a passkey for.');
   }
   return { origin, email };
+}
+
+// reCAPTCHA v3 scores the browser, not the person driving it, and it has no challenge a human can pass.
+// An automation-driven Chromium therefore scores near zero and password login fails here exactly as it
+// does for the walkers - which is why the walkers use passkeys in the first place. The session is created
+// in the operator's ordinary browser instead and carried in; only the credential has to be minted here,
+// because the virtual authenticator exists nowhere else.
+//
+// Identity chunks an oversized auth cookie into `<name>C1`, `<name>C2`, so a JSON array of {name, value}
+// is accepted as well as a bare value - transferring only the first chunk authenticates nothing.
+function readSessionCookies(origin: string): SessionCookie[] | null {
+  const cookieFile = process.env['ENROLL_SESSION_COOKIE_FILE'];
+  if (!cookieFile) {
+    return null;
+  }
+
+  const text = readFileSync(cookieFile, 'utf8').trim();
+  if (text === '') {
+    throw new Error(`ENROLL_SESSION_COOKIE_FILE '${cookieFile}' is empty.`);
+  }
+
+  const shared = {
+    domain: new URL(origin).hostname,
+    path: '/',
+    httpOnly: true,
+    secure: true,
+    sameSite: 'Lax' as const,
+  };
+
+  if (text.startsWith('[')) {
+    const parsed: unknown = JSON.parse(text);
+    if (!Array.isArray(parsed)) {
+      throw new Error(`ENROLL_SESSION_COOKIE_FILE '${cookieFile}' must hold a JSON array of {name, value}.`);
+    }
+    return parsed.map(entry => {
+      const { name, value } = entry as { name?: unknown; value?: unknown };
+      if (typeof name !== 'string' || typeof value !== 'string') {
+        throw new Error('Every cookie in the file needs a string name and a string value.');
+      }
+      return { ...shared, name, value };
+    });
+  }
+
+  return [{ ...shared, name: SESSION_COOKIE_NAME, value: text }];
 }
 
 async function installEmptyAuthenticator(context: BrowserContext, rpId: string): Promise<void> {
@@ -60,24 +117,37 @@ export async function enrollPasskey(): Promise<void> {
       }
     });
 
-    await page.goto(`${IDENTITY_LOGIN_PATH}?ReturnUrl=${encodeURIComponent(MANAGE_PASSKEYS_PATH)}`);
+    const sessionCookies = readSessionCookies(origin);
+    if (sessionCookies) {
+      await context.addCookies(sessionCookies);
+      await page.goto(MANAGE_PASSKEYS_PATH);
+      if (new URL(page.url()).pathname.startsWith(IDENTITY_LOGIN_PATH)) {
+        throw new Error(
+          `The transferred session did not authenticate ${email}: Identity redirected to the login page. The cookie is ` +
+          'either expired, copied from a different account, or chunked - check for a second cookie whose name ends C2 ' +
+          'and supply every chunk as a JSON array.');
+      }
+      process.stdout.write(`\nSession accepted for ${email}. Registering the passkey.\n\n`);
+    }
+    else {
+      await page.goto(`${IDENTITY_LOGIN_PATH}?ReturnUrl=${encodeURIComponent(MANAGE_PASSKEYS_PATH)}`);
 
-    process.stdout.write(
-      `\nSign in as ${email} in the browser window that just opened.\n` +
-      `Use a password or Google — whichever that account has — and pass the real reCAPTCHA yourself.\n` +
-      `This script waits for you, then registers the passkey and prints the credential.\n\n`);
+      process.stdout.write(
+        `\nSign in as ${email} in the browser window that just opened.\n` +
+        `Use Google if that account has it — reCAPTCHA v3 scores the browser, so password login cannot pass here.\n` +
+        `This script waits for you, then registers the passkey and prints the credential.\n\n`);
 
-    await page.waitForURL(url => url.pathname.startsWith(MANAGE_PASSKEYS_PATH), { timeout: ENROLLMENT_TIMEOUT_MS });
-    await page.click(ADD_PASSKEY_SELECTOR);
+      await page.waitForURL(url => url.pathname.startsWith(MANAGE_PASSKEYS_PATH), { timeout: ENROLLMENT_TIMEOUT_MS });
+    }
 
-    const registrationSucceeded = page
-      .waitForURL(url => url.pathname.startsWith(RENAME_PASSKEY_PATH), { timeout: ENROLLMENT_TIMEOUT_MS })
-      .then(() => true, () => false);
-    const registrationReported = page
-      .locator(STATUS_MESSAGE_SELECTOR)
-      .waitFor({ timeout: ENROLLMENT_TIMEOUT_MS })
-      .then(() => false, () => false);
-    await Promise.race([registrationSucceeded, registrationReported]);
+    await Promise.all([
+      page.waitForResponse(
+        response => response.request().method() === 'POST'
+          && new URL(response.url()).pathname.startsWith(MANAGE_PASSKEYS_PATH),
+        { timeout: ENROLLMENT_TIMEOUT_MS }),
+      page.click(ADD_PASSKEY_SELECTOR),
+    ]);
+    await page.waitForLoadState();
 
     if (!new URL(page.url()).pathname.startsWith(RENAME_PASSKEY_PATH)) {
       const reported = await page.locator(STATUS_MESSAGE_SELECTOR).innerText();

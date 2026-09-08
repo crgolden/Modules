@@ -1,6 +1,6 @@
 {
   "name": "@crgolden/modules",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Shared TypeScript modules for the crgolden fleet, published as one package with one subpath export per module.",
   "repository": {
     "type": "git",
@@ -22,6 +22,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "test": "tsc -p tsconfig.test.json && node dist-test/eslint-angular/rules.test.js",
     "enroll-passkey": "npm run build && node dist/synthetic-walker/enroll-passkey.js",
     "prepack": "npm run build"
   },
@@ -29,16 +30,23 @@
     "registry": "https://npm.pkg.github.com"
   },
   "peerDependencies": {
-    "@playwright/test": ">=1.61.0 <2"
+    "@playwright/test": ">=1.61.0 <2",
+    "eslint": ">=10 <11"
   },
   "peerDependenciesMeta": {
     "@playwright/test": {
       "optional": true
+    },
+    "eslint": {
+      "optional": true
     }
   },
   "devDependencies": {
+    "@angular-eslint/template-parser": "^22.1.0",
     "@playwright/test": "^1.62.1",
     "@types/node": "^24.0.0",
+    "@typescript-eslint/parser": "^8.67.0",
+    "eslint": "^10.8.1",
     "typescript": "^5.9.0"
   }
 }
