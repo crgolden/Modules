@@ -9,7 +9,7 @@ export const MAX_STEP_BUDGET = 500;
 export const DEFAULT_THINK_TIME_MS_RANGE: readonly [number, number] = [1500, 4000];
 export const LOGIN_TIMEOUT_MS = 30_000;
 export const PASSKEY_SUBMIT_TIMEOUT_MS = 15_000;
-export const AUTOFILL_GRACE_MS = 5_000;
+export const AUTOFILL_GRACE_MS = 15_000;
 export const HYDRATION_TIMEOUT_MS = 30_000;
 
 const UINT32_MAX = 0xffffffff;
