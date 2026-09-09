@@ -230,13 +230,19 @@ async function autofillNavigatedAway(page: Page): Promise<boolean> {
   }
 }
 
-async function submitPasskeyLogin(page: Page, email: string): Promise<void> {
+export async function submitPasskeyLogin(page: Page, email: string): Promise<void> {
   if (await autofillNavigatedAway(page)) {
     return;
   }
 
-  await page.fill("input[name='Input.Email']", email);
-  await page.locator(PASSKEY_SUBMIT_SELECTOR).click({ timeout: PASSKEY_SUBMIT_TIMEOUT_MS });
+  try {
+    await page.fill("input[name='Input.Email']", email);
+    await page.locator(PASSKEY_SUBMIT_SELECTOR).click({ timeout: PASSKEY_SUBMIT_TIMEOUT_MS });
+  } catch (cause) {
+    if (isOnIdentityLoginPage(page)) {
+      throw cause;
+    }
+  }
 }
 
 export async function loginWithPasskey(page: Page, options: LoginOptions): Promise<void> {
