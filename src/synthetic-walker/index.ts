@@ -9,7 +9,7 @@ export const MAX_STEP_BUDGET = 500;
 export const DEFAULT_THINK_TIME_MS_RANGE: readonly [number, number] = [1500, 4000];
 export const LOGIN_TIMEOUT_MS = 30_000;
 export const PASSKEY_SUBMIT_TIMEOUT_MS = 15_000;
-export const AUTOFILL_GRACE_MS = 15_000;
+export const AUTOFILL_GRACE_MS = 5_000;
 export const HYDRATION_TIMEOUT_MS = 30_000;
 
 const UINT32_MAX = 0xffffffff;
@@ -210,10 +210,40 @@ export async function installCredentialSerializationShim(context: BrowserContext
   await context.addInitScript(CREDENTIAL_SERIALIZATION_SHIM);
 }
 
+function toStandardBase64(base64Url: string): string {
+  const padding = (4 - (base64Url.length % 4)) % 4;
+  return base64Url.replaceAll('-', '+').replaceAll('_', '/') + '='.repeat(padding);
+}
+
+export function monotonicSignCountSeed(now: number = Date.now()): number {
+  return Math.floor(now / 1000);
+}
+
 export async function seedPasskey(page: Page, credential: PasskeyCredential): Promise<void> {
   const context = page.context();
-  await context.credentials.create(credential.rpId, credential);
-  await context.credentials.install();
+  const session = await context.newCDPSession(page);
+  await session.send('WebAuthn.enable');
+  const { authenticatorId } = await session.send('WebAuthn.addVirtualAuthenticator', {
+    options: {
+      protocol: 'ctap2',
+      transport: 'internal',
+      hasResidentKey: true,
+      hasUserVerification: true,
+      isUserVerified: true,
+      automaticPresenceSimulation: true,
+    },
+  });
+  await session.send('WebAuthn.addCredential', {
+    authenticatorId,
+    credential: {
+      credentialId: toStandardBase64(credential.id),
+      isResidentCredential: true,
+      rpId: credential.rpId,
+      privateKey: toStandardBase64(credential.privateKey),
+      userHandle: toStandardBase64(credential.userHandle),
+      signCount: monotonicSignCountSeed(),
+    },
+  });
   await installCredentialSerializationShim(context);
 }
 
