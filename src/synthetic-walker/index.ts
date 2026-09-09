@@ -222,6 +222,7 @@ export function monotonicSignCountSeed(now: number = Date.now()): number {
 export async function seedPasskey(page: Page, credential: PasskeyCredential): Promise<void> {
   const context = page.context();
   const session = await context.newCDPSession(page);
+  await session.send('WebAuthn.disable');
   await session.send('WebAuthn.enable');
   const { authenticatorId } = await session.send('WebAuthn.addVirtualAuthenticator', {
     options: {
