@@ -44,7 +44,7 @@
   "devDependencies": {
     "@angular-eslint/template-parser": "^22.1.0",
     "@playwright/test": "^1.62.1",
-    "@types/node": "^24.0.0",
+    "@types/node": "^26.4.1",
     "@typescript-eslint/parser": "^8.67.0",
     "eslint": "^10.8.1",
     "typescript": "^5.9.0"
