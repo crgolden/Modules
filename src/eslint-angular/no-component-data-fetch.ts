@@ -23,26 +23,17 @@ function isSubscribeCall(node: AnyNode): boolean {
     && (callee.property as unknown as { name?: string })?.name === 'subscribe';
 }
 
-/**
- * Walk the init path: skip nested functions, EXCEPT the handler passed to `.subscribe(...)`.
- *
- * A `pipe(switchMap(...))` operator runs when the subject emits, which is a later, user-driven
- * reload, so its body is not the init path. A `.subscribe(...)` handler on a subscription made at
- * init runs as part of that initial load, so anything it calls IS the init path. Missing that let a
- * fetch hide one callback deep (`ngOnInit -> subscribe(() => this.loadFriendRequests())`) while
- * CODE-STYLE.md rule 16 bans "a private method any of those call".
- */
-function walkEager(node: AnyNode | null | undefined, visit: (n: AnyNode) => void): void {
+function subscriptionEmitsAtInit(node: AnyNode): boolean {
+  return isSubscribeCall(node)
+    && (chainProducesRequest(node.callee as AnyNode | undefined) || routeStreamSubscribe(node));
+}
+
+function walkInitPath(node: AnyNode | null | undefined, visit: (n: AnyNode) => void): void {
   if (!node || typeof node.type !== 'string') {
     return;
   }
   visit(node);
-  // Only a subscription that EMITS at init carries its handler onto the init path: one whose chain
-  // issues a request, or an ActivatedRoute stream, which emits synchronously. Subscribing to a
-  // user-driven subject (`search$.pipe(debounceTime(...)).subscribe(...)`) runs its handler when the
-  // user acts, so descending into it would report every debounced search box.
-  const descendIntoClosures = isSubscribeCall(node)
-    && (chainHeadIsInvocation(node.callee as AnyNode | undefined) || routeStreamSubscribe(node));
+  const descendIntoHandler = subscriptionEmitsAtInit(node);
   for (const key of Object.keys(node)) {
     if (key === 'parent') {
       continue;
@@ -55,25 +46,17 @@ function walkEager(node: AnyNode | null | undefined, visit: (n: AnyNode) => void
         continue;
       }
       const isClosure = CLOSURE_TYPES.includes(candidate.type);
-      if (isClosure && !(descendIntoClosures && key === 'arguments')) {
+      if (isClosure && !(descendIntoHandler && key === 'arguments')) {
         continue;
       }
-      walkEager(candidate, visit);
+      walkInitPath(candidate, visit);
     }
   }
 }
 
 const OPERATOR_CALLS = ['pipe', 'subscribe'];
 
-/**
- * True when the observable being subscribed to was PRODUCED by a method call in this chain.
- *
- * `this.api.get(x).pipe(...).subscribe(...)` -> the chain contains `get(...)`, so the request is
- * issued now. `this.requests$.pipe(...).subscribe(...)` contains only `pipe`, so it is wiring onto
- * an existing subject and nothing is requested until something emits. `this.form.valueChanges
- * .subscribe(...)` contains no call at all. That is the whole discrimination the rule rests on.
- */
-function chainHeadIsInvocation(callee: AnyNode | undefined): boolean {
+function chainProducesRequest(callee: AnyNode | undefined): boolean {
   let current: AnyNode | undefined = callee;
   while (current) {
     if (current.type === 'CallExpression') {
@@ -111,27 +94,20 @@ function calleeName(node: AnyNode): string | null {
   return null;
 }
 
-/** A fetch performed NOW: `<service call chain>.subscribe(...)`, `firstValueFrom(...)`, `toSignal(...)`. */
 function isEagerFetch(node: AnyNode): boolean {
   if (node.type !== 'CallExpression') {
     return false;
   }
   const name = calleeName(node);
   if (name && FETCH_FUNCTIONS.includes(name)) {
-    // Same discrimination as `.subscribe`, applied to the wrapped observable:
-    // `toSignal(this.api.get())` requests, `toSignal(this.router.events.pipe(...))` does not.
-    return chainHeadIsInvocation(((node.arguments as AnyNode[]) ?? [])[0]);
+    return chainProducesRequest(((node.arguments as AnyNode[]) ?? [])[0]);
   }
   if (name && FETCH_TERMINATORS.includes(name)) {
-    // `this.requests$.pipe(...).subscribe(...)` is WIRING: the chain starts at a field, so nothing
-    // is requested until something emits. `this.api.get(x).subscribe(...)` starts at a call and is
-    // a request issued right now. That distinction is the whole rule.
-    return chainHeadIsInvocation(node.callee as AnyNode);
+    return chainProducesRequest(node.callee as AnyNode);
   }
   return false;
 }
 
-/** `this.somethingSubject.next(...)` at init: kicking a pipeline is an eager load by another name. */
 function isPipelineKick(node: AnyNode): boolean {
   if (node.type !== 'CallExpression' || calleeName(node) !== 'next') {
     return false;
@@ -144,8 +120,7 @@ function isPipelineKick(node: AnyNode): boolean {
 
 const ROUTE_STREAMS = ['queryParams', 'params', 'paramMap', 'queryParamMap', 'data', 'fragment'];
 
-/** Walk everything, closures included. Used only to look inside a handler we already suspect. */
-function walkAll(node: AnyNode | null | undefined, visit: (n: AnyNode) => void): void {
+function walkIncludingClosures(node: AnyNode | null | undefined, visit: (n: AnyNode) => void): void {
   if (!node || typeof node.type !== 'string') {
     return;
   }
@@ -158,19 +133,12 @@ function walkAll(node: AnyNode | null | undefined, visit: (n: AnyNode) => void):
     for (const child of (Array.isArray(value) ? value : [value])) {
       const candidate = child as AnyNode | null;
       if (candidate && typeof candidate.type === 'string') {
-        walkAll(candidate, visit);
+        walkIncludingClosures(candidate, visit);
       }
     }
   }
 }
 
-/**
- * `this.route.queryParams.subscribe(p => this.load(p))` on the init path.
- *
- * An ActivatedRoute stream emits its current value synchronously on subscribe, so this loads
- * immediately even though the chain contains no invocation and the fetch hides inside the handler.
- * It is the classic shape a resolver replaces, and it is invisible to the wiring/fetching test.
- */
 function routeStreamSubscribe(node: AnyNode): boolean {
   if (node.type !== 'CallExpression' || calleeName(node) !== 'subscribe') {
     return false;
@@ -199,7 +167,7 @@ function routeStreamSubscribe(node: AnyNode): boolean {
 
 function selfCallNames(body: AnyNode): string[] {
   const names: string[] = [];
-  walkEager(body, node => {
+  walkInitPath(body, node => {
     if (node.type !== 'CallExpression') {
       return;
     }
@@ -217,7 +185,7 @@ function selfCallNames(body: AnyNode): string[] {
 
 function bodyFetches(body: AnyNode | null | undefined): boolean {
   let found = false;
-  walkEager(body, node => {
+  walkInitPath(body, node => {
     if (isEagerFetch(node)) {
       found = true;
     }
@@ -294,18 +262,17 @@ const rule: Rule.RuleModule = {
           if (!body) {
             continue;
           }
-          walkEager(body, inner => {
+          walkInitPath(body, inner => {
             if (isEagerFetch(inner)) {
               report(inner, where, 'initFetch');
             } else if (isPipelineKick(inner)) {
               report(inner, where, 'initKick');
             } else if (routeStreamSubscribe(inner)) {
-              // Only a handler that actually loads: subscribing to read a param into a signal is fine.
-              let loads = false;
+              let handlerLoads = false;
               for (const arg of (inner.arguments as AnyNode[]) ?? []) {
-                walkAll(arg, deep => {
+                walkIncludingClosures(arg, deep => {
                   if (isEagerFetch(deep) || isPipelineKick(deep)) {
-                    loads = true;
+                    handlerLoads = true;
                     return;
                   }
                   if (deep.type === 'CallExpression') {
@@ -315,19 +282,18 @@ const rule: Rule.RuleModule = {
                       const named = (cal.property as unknown as { name?: string })?.name;
                       const target = named ? classMethodBody(classBody, named) : null;
                       if (target && bodyFetches(target)) {
-                        loads = true;
+                        handlerLoads = true;
                       }
                     }
                   }
                 });
               }
-              if (loads) {
+              if (handlerLoads) {
                 report(inner, `${where} -> an ActivatedRoute stream`, 'initFetch');
               }
             }
           });
 
-          // One hop: an init statement calling a private method that fetches.
           for (const name of selfCallNames(body)) {
             if (exemptMethods.has(name)) {
               continue;

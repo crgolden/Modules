@@ -130,83 +130,89 @@ tsTester.run('no-component-navigation', noComponentNavigation, {
 tsTester.run('no-component-data-fetch', noComponentDataFetch, {
   valid: [
     {
-      // WIRING, not fetching: the chain starts at a subject, so nothing is requested until it emits.
+      name: 'a subject chain is wiring, not fetching: nothing is requested until the subject emits',
       code: component('  constructor() {\n    this.requests$.pipe(switchMap((q) => this.api.search(q))).subscribe((r) => this.rows.set(r));\n  }'),
     },
     {
+      name: 'reading the payload a resolver already supplied',
       code: component('  ngOnInit() {\n    this.rows.set(this.route.snapshot.data["rows"]);\n  }'),
     },
     {
-      // A form stream is not a data fetch, and its chain contains no call at all.
+      name: 'a form stream is not a data fetch, and its chain contains no call at all',
       code: component('  constructor() {\n    this.form.valueChanges.subscribe((v) => this.formSignal.set(v));\n  }'),
     },
     {
-      // Router events, same shape: a member chain with no invocation.
+      name: 'a router-event stream is the same shape: a member chain with no invocation',
       code: component('  constructor() {\n    this.router.events.pipe(takeUntilDestroyed()).subscribe(() => this.close());\n  }'),
     },
     {
-      // A user handler may fetch; the rule is about the init path only.
+      name: 'a user handler may fetch, because the rule is about the init path only',
       code: component('  onSearch(term: string) {\n    this.api.search(term).subscribe((r) => this.rows.set(r));\n  }'),
     },
     {
+      name: 'a resolver fetching is the shape the rule asks for',
       code: 'export const thingResolver = () => {\n  return inject(Api).get().pipe(catchError(() => of(null)));\n};',
     },
     {
+      name: 'an init call that is not a request at all',
       code: component('  ngOnInit() {\n    this.titleService.setTitle("x");\n  }'),
     },
     {
+      name: 'a fetching private method named in exemptMethods',
       code: component('  ngOnInit() {\n    this.reload();\n  }'),
       options: [{ exemptMethods: ['reload'] }],
     },
     {
-      // Reading a route param into a signal is not loading, so the stream arm must stay quiet.
+      name: 'reading a route param into a signal is not loading, so the stream arm stays quiet',
       code: component('  ngOnInit() {\n    this.route.queryParams.subscribe((p) => this.page.set(p["page"]));\n  }'),
     },
     {
-      // toSignal over a router-event stream is not a data fetch: the chain produces no request.
+      name: 'toSignal over a router-event stream produces no request',
       code: component('  private readonly last = toSignal(this.router.events.pipe(filter((e) => e instanceof NavigationEnd)), { initialValue: null });'),
     },
     {
-      // Wiring a debounced search box: the handler runs when the user types, not at init, so the
-      // kick inside it is user-driven and must not report.
+      name: 'a debounced search box: its handler runs when the user types, so the kick inside it is user-driven',
       code: component('  ngOnInit() {\n    this.search$.pipe(debounceTime(300)).subscribe(() => {\n      this.page.set(1);\n      this.load$.next();\n    });\n  }'),
     },
   ],
   invalid: [
     {
+      name: 'a service call subscribed in ngOnInit',
       code: component('  ngOnInit() {\n    this.api.getChurchBySlug(this.slug).subscribe((c) => this.church.set(c));\n  }'),
       errors: [{ messageId: 'initFetch' }],
     },
     {
+      name: 'ngOnInit calling a private method that fetches',
       code: component('  ngOnInit() {\n    this.loadChurch();\n  }\n  private loadChurch() {\n    this.api.getChurchBySlug(this.slug).subscribe((c) => this.church.set(c));\n  }'),
       errors: [{ messageId: 'initFetch' }],
     },
     {
+      name: 'toSignal over a service call in a field initialiser',
       code: component('  protected readonly denominations = toSignal(this.churchService.getDenominations());'),
       errors: [{ messageId: 'initFetch' }],
     },
     {
+      name: 'kicking a request pipeline in ngOnInit',
       code: component('  ngOnInit() {\n    this.load$.next();\n  }'),
       errors: [{ messageId: 'initKick' }],
     },
     {
+      name: 'awaiting firstValueFrom over a service call in ngOnInit',
       code: component('  async ngOnInit() {\n    const rows = await firstValueFrom(this.api.search());\n    this.rows.set(rows);\n  }'),
       errors: [{ messageId: 'initFetch' }],
     },
     {
-      // A resolver supplying ONE payload does not license fetching the rest in-component.
+      name: 'a resolver supplying ONE payload does not license fetching the rest in-component',
       code: component('  ngOnInit() {\n    this.status.set(this.route.snapshot.data["status"]);\n    this.loadPreferences();\n  }\n  private loadPreferences() {\n    this.api.getPreferences().subscribe((p) => this.prefs.set(p));\n  }'),
       errors: [{ messageId: 'initFetch' }],
     },
     {
-      // An ActivatedRoute stream emits synchronously on subscribe, so this loads at init even
-      // though the chain has no invocation and the fetch hides inside the handler.
+      name: 'an ActivatedRoute stream whose handler loads, though the chain has no invocation',
       code: component('  ngOnInit() {\n    this.route.queryParams.subscribe((p) => this.load(p));\n  }\n  private load(p: object) {\n    this.api.search(p).subscribe((r) => this.rows.set(r));\n  }'),
       errors: [{ messageId: 'initFetch' }, { messageId: 'initFetch' }],
     },
     {
-      // Indirected one callback deep. Rule 16 bans "a private method any of those call", and this
-      // hid from the first version of the walker, which skipped every closure.
+      name: 'a fetch indirected one callback deep, inside a subscribe handler',
       code: component('  ngOnInit() {\n    this.api.getMe().subscribe(() => this.loadFriendRequests());\n  }\n  private loadFriendRequests() {\n    this.api.getRequests().subscribe((r) => this.requests.set(r));\n  }'),
       errors: [{ messageId: 'initFetch' }, { messageId: 'initFetch' }],
     },
