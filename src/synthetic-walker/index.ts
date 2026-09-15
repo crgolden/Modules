@@ -1,16 +1,10 @@
 import { test, type BrowserContext, type Locator, type Page, type TestInfo } from '@playwright/test';
 
 export const CRGOLDEN_IDENTITY_ORIGIN = 'https://crgolden-identity.azurewebsites.net';
-export const PASSKEY_SUBMIT_SELECTOR = '#passkey-submit';
 export const IDENTITY_LOGIN_PATH = '/Account/Login';
 
 export const DEFAULT_STEP_BUDGET = 40;
 export const MAX_STEP_BUDGET = 500;
-export const DEFAULT_THINK_TIME_MS_RANGE: readonly [number, number] = [1500, 4000];
-export const LOGIN_TIMEOUT_MS = 30_000;
-export const PASSKEY_SUBMIT_TIMEOUT_MS = 15_000;
-export const AUTOFILL_GRACE_MS = 5_000;
-export const HYDRATION_TIMEOUT_MS = 30_000;
 
 const UINT32_MAX = 0xffffffff;
 const UINT32_RANGE = 2 ** 32;
@@ -34,7 +28,6 @@ export interface WalkOptions {
   seed: number;
   steps: number;
   testInfo: TestInfo;
-  thinkTimeMsRange?: readonly [number, number];
 }
 
 export interface WalkResult {
@@ -52,7 +45,6 @@ export interface PasskeyCredential {
 }
 
 export interface SyntheticAccount {
-  email: string;
   credential: PasskeyCredential;
 }
 
@@ -127,12 +119,10 @@ function requireString(source: Record<string, unknown>, field: string, envName: 
 }
 
 export function resolveSyntheticAccount(slot: CredentialSlot): SyntheticAccount {
-  const emailName = `EMAIL${slot}`;
   const credentialName = `PASSKEY_CREDENTIAL${slot}`;
-  const email = process.env[emailName];
   const rawCredential = process.env[credentialName];
-  if (!email || !rawCredential) {
-    throw new Error(`${emailName} and ${credentialName} must both be set for a synthetic walk.`);
+  if (!rawCredential) {
+    throw new Error(`${credentialName} must be set for a synthetic walk.`);
   }
   let parsed: unknown;
   try {
@@ -145,7 +135,6 @@ export function resolveSyntheticAccount(slot: CredentialSlot): SyntheticAccount 
   }
   const fields = parsed as Record<string, unknown>;
   return {
-    email,
     credential: {
       id: requireString(fields, 'id', credentialName),
       rpId: requireString(fields, 'rpId', credentialName),
@@ -248,56 +237,26 @@ export async function seedPasskey(page: Page, credential: PasskeyCredential): Pr
   await installCredentialSerializationShim(context);
 }
 
-function isOnIdentityLoginPage(page: Page): boolean {
-  return new URL(page.url()).pathname.startsWith(IDENTITY_LOGIN_PATH);
-}
-
-async function autofillNavigatedAway(page: Page): Promise<boolean> {
-  try {
-    await page.waitForURL(url => !url.pathname.startsWith(IDENTITY_LOGIN_PATH), { timeout: AUTOFILL_GRACE_MS });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export async function submitPasskeyLogin(page: Page, email: string): Promise<void> {
-  if (await autofillNavigatedAway(page)) {
-    return;
-  }
-
-  try {
-    await page.fill("input[name='Input.Email']", email);
-    await page.locator(PASSKEY_SUBMIT_SELECTOR).click({ timeout: PASSKEY_SUBMIT_TIMEOUT_MS });
-  } catch (cause) {
-    if (isOnIdentityLoginPage(page)) {
-      throw cause;
-    }
-  }
-}
-
 export async function loginWithPasskey(page: Page, options: LoginOptions): Promise<void> {
   const { slot, returnParam, returnPath } = options;
   const identityOrigin = options.identityOrigin ?? CRGOLDEN_IDENTITY_ORIGIN;
-  const { email, credential } = resolveSyntheticAccount(slot);
+  const { credential } = resolveSyntheticAccount(slot);
   await seedPasskey(page, credential);
   await page.goto(`/bff/login?${returnParam}=${encodeURIComponent(returnPath)}`);
-  await submitPasskeyLogin(page, email);
-  await page.waitForURL(url => url.origin !== identityOrigin && url.pathname.startsWith(returnPath), { timeout: LOGIN_TIMEOUT_MS });
+  await page.waitForURL(url => url.origin !== identityOrigin && url.pathname.startsWith(returnPath));
   await waitForAngularHydration(page);
 }
 
 export async function loginToIdentityWithPasskey(page: Page, options: IdentityLoginOptions): Promise<void> {
   const returnPath = options.returnPath ?? '/';
-  const { email, credential } = resolveSyntheticAccount(options.slot);
+  const { credential } = resolveSyntheticAccount(options.slot);
   await seedPasskey(page, credential);
   await page.goto(`${IDENTITY_LOGIN_PATH}?ReturnUrl=${encodeURIComponent(returnPath)}`);
-  await submitPasskeyLogin(page, email);
-  await page.waitForURL(url => !url.pathname.startsWith(IDENTITY_LOGIN_PATH), { timeout: LOGIN_TIMEOUT_MS });
+  await page.waitForURL(url => !url.pathname.startsWith(IDENTITY_LOGIN_PATH));
 }
 
-export async function waitForAngularHydration(page: Page, timeoutMs: number = HYDRATION_TIMEOUT_MS): Promise<void> {
-  await page.waitForFunction(() => document.querySelectorAll('[ngh]').length === 0, undefined, { timeout: timeoutMs });
+export async function waitForAngularHydration(page: Page): Promise<void> {
+  await page.waitForFunction(() => document.querySelectorAll('[ngh]').length === 0);
 }
 
 export function prefixLocator(page: Page, idPrefix: string): Locator {
@@ -335,7 +294,6 @@ function pickWeighted(rng: Rng, actions: readonly WalkerAction[]): WalkerAction 
 
 export async function walk(page: Page, actions: readonly WalkerAction[], options: WalkOptions): Promise<WalkResult> {
   const { seed, steps, testInfo } = options;
-  const [thinkMin, thinkMax] = options.thinkTimeMsRange ?? DEFAULT_THINK_TIME_MS_RANGE;
   const rng = createRng(seed);
   testInfo.annotations.push({ type: 'synthetic-seed', description: String(seed) });
   let executedSteps = 0;
@@ -353,7 +311,6 @@ export async function walk(page: Page, actions: readonly WalkerAction[], options
       throw new Error(`seed=${seed} step=${stepIndex} action=${action.name}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
     }
     executedSteps += 1;
-    await page.waitForTimeout(thinkMin + rng.int(thinkMax - thinkMin));
   }
   return { executedSteps };
 }
