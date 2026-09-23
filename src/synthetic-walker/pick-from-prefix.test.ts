@@ -1,36 +1,57 @@
 import assert from 'node:assert/strict';
-import { chromium } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { createRng, pickFromPrefix } from './index';
 
 const SEED = 1;
 const TILE_ID_PREFIX = 'catalog-title-';
 const FIRST_TILE_ID = `${TILE_ID_PREFIX}0`;
 
-async function tileArrivingAfterTheWalkHasAskedForOne(): Promise<void> {
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
-  try {
-    await page.setContent('<main id="grid"></main>');
-
-    const picked = pickFromPrefix(page, createRng(SEED), TILE_ID_PREFIX);
-
-    await page.evaluate(id => {
-      const tile = document.createElement('a');
-      tile.id = id;
-      tile.textContent = id;
-      document.getElementById('grid')?.append(tile);
-    }, FIRST_TILE_ID);
-
-    const locator = await picked;
-    assert.equal(await locator.getAttribute('id'), FIRST_TILE_ID);
-  } finally {
-    await browser.close();
-  }
+interface StubbedPage {
+  readonly page: Page;
+  readonly calls: readonly string[];
 }
 
-tileArrivingAfterTheWalkHasAskedForOne()
+function pageWhoseTilesArriveOnlyOnceWaitedFor(): StubbedPage {
+  const calls: string[] = [];
+  let tileHasArrived = false;
+
+  const locator = {
+    first: () => ({
+      waitFor: async () => {
+        calls.push('waitFor');
+        tileHasArrived = true;
+      },
+    }),
+    count: async () => {
+      calls.push('count');
+      return Number(tileHasArrived);
+    },
+    nth: (index: number) => ({ id: `${TILE_ID_PREFIX}${index}` }),
+  };
+
+  return {
+    page: { locator: () => locator } as unknown as Page,
+    calls,
+  };
+}
+
+async function aTileArrivingAfterTheWalkHasAskedForOne(): Promise<void> {
+  const { page, calls } = pageWhoseTilesArriveOnlyOnceWaitedFor();
+
+  const picked = (await pickFromPrefix(page, createRng(SEED), TILE_ID_PREFIX)) as unknown as {
+    id: string;
+  };
+
+  assert.equal(picked.id, FIRST_TILE_ID);
+  assert.ok(
+    calls.indexOf('waitFor') < calls.indexOf('count'),
+    `pickFromPrefix counted before waiting, so the count describes a DOM that may still be filling: ${JSON.stringify(calls)}`,
+  );
+}
+
+aTileArrivingAfterTheWalkHasAskedForOne()
   .then(() => {
-    console.log('pick-from-prefix: a tile arriving mid-pick is waited for, not thrown on');
+    console.log('pick-from-prefix: a tile arriving mid-pick is waited for, not counted past');
   })
   .catch((error: unknown) => {
     console.error(error);
