@@ -269,6 +269,7 @@ export async function hasPrefix(page: Page, idPrefix: string): Promise<boolean> 
 
 export async function pickFromPrefix(page: Page, rng: Rng, idPrefix: string): Promise<Locator> {
   const candidates = prefixLocator(page, idPrefix);
+  await candidates.first().waitFor();
   const count = await candidates.count();
   if (count === 0) {
     throw new Error(`No elements match [id^="${idPrefix}"].`);
