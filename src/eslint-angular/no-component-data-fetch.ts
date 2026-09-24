@@ -3,6 +3,13 @@ import type { Node } from 'estree';
 
 type AnyNode = Node & { parent?: AnyNode | null; [key: string]: unknown };
 
+export const ComponentDataFetchMessageIds = {
+  initFetch: 'initFetch',
+  initKick: 'initKick',
+} as const;
+
+type ComponentDataFetchMessageId = (typeof ComponentDataFetchMessageIds)[keyof typeof ComponentDataFetchMessageIds];
+
 const FETCH_TERMINATORS = ['subscribe'];
 const FETCH_FUNCTIONS = ['firstValueFrom', 'lastValueFrom', 'toSignal'];
 const INIT_METHODS = ['ngOnInit', 'constructor'];
@@ -210,9 +217,9 @@ const rule: Rule.RuleModule = {
       },
     ],
     messages: {
-      initFetch:
+      [ComponentDataFetchMessageIds.initFetch]:
         'This @Component fetches its own data on the init path ({{where}}). Data a component needs in order to render comes from a route resolver, so the route does not activate until it is in hand: no "Loading..." placeholder, a deep link that works, and browser-Back scroll restoration against a full-height page. Move the request into a resolver and read it from route.snapshot.data. crgolden rule 16.',
-      initKick:
+      [ComponentDataFetchMessageIds.initKick]:
         'This @Component kicks a request pipeline on the init path ({{where}}), which is an eager load by another name. The first payload comes from a route resolver; the pipeline stays for user-driven reloads. crgolden rule 16.',
     },
   },
@@ -235,7 +242,7 @@ const rule: Rule.RuleModule = {
       return null;
     }
 
-    function report(node: AnyNode, where: string, messageId: 'initFetch' | 'initKick'): void {
+    function report(node: AnyNode, where: string, messageId: ComponentDataFetchMessageId): void {
       context.report({ node: node as Node, messageId, data: { where } });
     }
 
@@ -264,9 +271,9 @@ const rule: Rule.RuleModule = {
           }
           walkInitPath(body, inner => {
             if (isEagerFetch(inner)) {
-              report(inner, where, 'initFetch');
+              report(inner, where, ComponentDataFetchMessageIds.initFetch);
             } else if (isPipelineKick(inner)) {
-              report(inner, where, 'initKick');
+              report(inner, where, ComponentDataFetchMessageIds.initKick);
             } else if (routeStreamSubscribe(inner)) {
               let handlerLoads = false;
               for (const arg of (inner.arguments as AnyNode[]) ?? []) {
@@ -289,7 +296,7 @@ const rule: Rule.RuleModule = {
                 });
               }
               if (handlerLoads) {
-                report(inner, `${where} -> an ActivatedRoute stream`, 'initFetch');
+                report(inner, `${where} -> an ActivatedRoute stream`, ComponentDataFetchMessageIds.initFetch);
               }
             }
           });
@@ -300,7 +307,7 @@ const rule: Rule.RuleModule = {
             }
             const target = classMethodBody(classBody, name);
             if (target && bodyFetches(target)) {
-              report(body, `${where} -> ${name}()`, 'initFetch');
+              report(body, `${where} -> ${name}()`, ComponentDataFetchMessageIds.initFetch);
             }
           }
         }

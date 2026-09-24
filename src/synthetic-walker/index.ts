@@ -3,6 +3,12 @@ import { test, type BrowserContext, type Locator, type Page, type TestInfo } fro
 export const CRGOLDEN_IDENTITY_ORIGIN = 'https://crgolden-identity.azurewebsites.net';
 export const IDENTITY_LOGIN_PATH = '/Account/Login';
 
+export const IDENTITY_RETURN_URL_PARAMETER = 'ReturnUrl';
+
+export function identityLoginUrl(returnPath: string): string {
+  return `${IDENTITY_LOGIN_PATH}?${IDENTITY_RETURN_URL_PARAMETER}=${encodeURIComponent(returnPath)}`;
+}
+
 export const DEFAULT_STEP_BUDGET = 40;
 export const MAX_STEP_BUDGET = 500;
 
@@ -251,7 +257,7 @@ export async function loginToIdentityWithPasskey(page: Page, options: IdentityLo
   const returnPath = options.returnPath ?? '/';
   const { credential } = resolveSyntheticAccount(options.slot);
   await seedPasskey(page, credential);
-  await page.goto(`${IDENTITY_LOGIN_PATH}?ReturnUrl=${encodeURIComponent(returnPath)}`);
+  await page.goto(identityLoginUrl(returnPath));
   await page.waitForURL(url => !url.pathname.startsWith(IDENTITY_LOGIN_PATH));
 }
 

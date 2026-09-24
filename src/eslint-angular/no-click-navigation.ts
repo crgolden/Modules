@@ -1,5 +1,11 @@
 import type { Rule } from 'eslint';
 
+export const ClickNavigationMessageIds = {
+  anchorWithoutHref: 'anchorWithoutHref',
+  placeholderHref: 'placeholderHref',
+  clickNavigation: 'clickNavigation',
+} as const;
+
 export const SUGGESTED_NAVIGATION_METHODS: readonly string[] = [
   'goToPage',
   'setView',
@@ -87,11 +93,11 @@ const rule: Rule.RuleModule = {
       },
     ],
     messages: {
-      anchorWithoutHref:
+      [ClickNavigationMessageIds.anchorWithoutHref]:
         'This <{{element}}> has a (click) handler but no href or routerLink, so it is not a real link: it cannot be hovered, bookmarked, opened in a new tab, or crawled. Give it routerLink (in-app) or href (outside the router), or use a <button> if it is not navigation. crgolden rule 15.',
-      placeholderHref:
+      [ClickNavigationMessageIds.placeholderHref]:
         'This <{{element}}> uses a placeholder href and navigates from its (click) handler instead. Bind the real destination with routerLink so the browser owns the navigation. crgolden rule 15.',
-      clickNavigation:
+      [ClickNavigationMessageIds.clickNavigation]:
         '"{{handler}}" changes the URL from a (click) handler on <{{element}}>. Navigation must be a link: render an <a [routerLink]> so hover, bookmark, Ctrl-click and crawlers all work. crgolden rule 15.',
     },
   },
@@ -124,12 +130,12 @@ const rule: Rule.RuleModule = {
         const isAnchor = ANCHOR_ELEMENTS.includes(element.name.toLowerCase());
 
         if (isAnchor && isPlaceholderHref(element)) {
-          context.report({ loc, messageId: 'placeholderHref', data: { element: element.name } });
+          context.report({ loc, messageId: ClickNavigationMessageIds.placeholderHref, data: { element: element.name } });
           return;
         }
 
         if (isAnchor && !hasLinkTarget(element)) {
-          context.report({ loc, messageId: 'anchorWithoutHref', data: { element: element.name } });
+          context.report({ loc, messageId: ClickNavigationMessageIds.anchorWithoutHref, data: { element: element.name } });
           return;
         }
 
@@ -145,7 +151,7 @@ const rule: Rule.RuleModule = {
         if (handler !== null && navigationMethods.has(handler)) {
           context.report({
             loc,
-            messageId: 'clickNavigation',
+            messageId: ClickNavigationMessageIds.clickNavigation,
             data: { handler, element: element.name },
           });
         }

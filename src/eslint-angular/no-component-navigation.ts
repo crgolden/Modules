@@ -1,6 +1,10 @@
 import type { Rule } from 'eslint';
 import type { Node } from 'estree';
 
+export const ComponentNavigationMessageIds = {
+  componentNavigation: 'componentNavigation',
+} as const;
+
 export const REDIRECT_CALLBACKS: readonly string[] = ['subscribe', 'then', 'catch', 'finally'];
 
 const NAVIGATION_CALLS: readonly string[] = ['navigate', 'navigateByUrl'];
@@ -115,7 +119,7 @@ const rule: Rule.RuleModule = {
       },
     ],
     messages: {
-      componentNavigation:
+      [ComponentNavigationMessageIds.componentNavigation]:
         '"{{method}}" navigates from a @Component method body. If a user clicks something to get here, it must be an <a [routerLink]> instead so hover, bookmark, Ctrl-click and crawlers work. If this is a redirect with no clickable element (a form submit, a post-save redirect), name it in this rule\'s exemptMethods so the exception is declared rather than assumed. crgolden rule 15.',
     },
   },
@@ -139,7 +143,7 @@ const rule: Rule.RuleModule = {
       if (method === null || exemptMethods.has(method)) {
         return;
       }
-      context.report({ node: node as Node, messageId: 'componentNavigation', data: { method } });
+      context.report({ node: node as Node, messageId: ComponentNavigationMessageIds.componentNavigation, data: { method } });
     }
 
     return {

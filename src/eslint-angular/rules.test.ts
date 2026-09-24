@@ -1,7 +1,16 @@
+import { randomUUID } from 'node:crypto';
 import { RuleTester } from 'eslint';
-import noClickNavigation from './no-click-navigation';
-import noComponentNavigation from './no-component-navigation';
-import noComponentDataFetch from './no-component-data-fetch';
+import { RuleNames } from './index';
+import noClickNavigation, { ClickNavigationMessageIds } from './no-click-navigation';
+import noComponentNavigation, { ComponentNavigationMessageIds } from './no-component-navigation';
+import noComponentDataFetch, { ComponentDataFetchMessageIds } from './no-component-data-fetch';
+
+function newHandlerName(): string {
+  return `handler${randomUUID().replace(/-/g, '')}`;
+}
+
+const pagingHandler = newHandlerName();
+const viewHandler = newHandlerName();
 
 const templateParser: unknown = require('@angular-eslint/template-parser');
 const tsParser: unknown = require('@typescript-eslint/parser');
@@ -14,13 +23,13 @@ const tsTester = new RuleTester({
   languageOptions: { parser: tsParser as never, ecmaVersion: 2022, sourceType: 'module' },
 });
 
-templateTester.run('no-click-navigation', noClickNavigation, {
+templateTester.run(RuleNames.noClickNavigation, noClickNavigation, {
   valid: [
     { code: '<a routerLink="/churches" (click)="menuOpen.set(false)">Browse</a>' },
     { code: '<a [routerLink]="[\'/churches\']" (click)="close()">Browse</a>' },
     { code: '<a [href]="\'#\' + item.id" (click)="scrollToId(item.id, $event)">Jump</a>' },
     { code: '<a routerLink="/library" (click)="open()">Library</a>', options: [{ navigationMethods: ['open'] }] },
-    { code: '<a routerLink="/x" (click)="nav.goToPage(1)">X</a>', options: [{ navigationMethods: ['goToPage'] }] },
+    { code: `<a routerLink="/x" (click)="nav.${pagingHandler}(1)">X</a>`, options: [{ navigationMethods: [pagingHandler] }] },
     { code: '<button (click)="nextPage()">Next</button>' },
     { code: '<button (click)="prevPage()">Prev</button>' },
     { code: '<a href="/bff/login">Sign in</a>' },
@@ -32,45 +41,45 @@ templateTester.run('no-click-navigation', noClickNavigation, {
   invalid: [
     {
       code: '<a href="#" (click)="$event.preventDefault(); back()">Back</a>',
-      errors: [{ messageId: 'placeholderHref' }],
+      errors: [{ messageId: ClickNavigationMessageIds.placeholderHref }],
     },
     {
       code: '<a (click)="back()">Back</a>',
-      errors: [{ messageId: 'anchorWithoutHref' }],
+      errors: [{ messageId: ClickNavigationMessageIds.anchorWithoutHref }],
     },
     {
-      code: '<button id="btn-next-page" (click)="goToPage(page() + 1)">Next</button>',
-      options: [{ navigationMethods: ['goToPage'] }],
-      errors: [{ messageId: 'clickNavigation' }],
+      code: `<button id="btn-next-page" (click)="${pagingHandler}(page() + 1)">Next</button>`,
+      options: [{ navigationMethods: [pagingHandler] }],
+      errors: [{ messageId: ClickNavigationMessageIds.clickNavigation }],
     },
     {
-      code: '<button (click)="setView(\'grid\')">Grid</button>',
-      options: [{ navigationMethods: ['setView'] }],
-      errors: [{ messageId: 'clickNavigation' }],
+      code: `<button (click)="${viewHandler}('grid')">Grid</button>`,
+      options: [{ navigationMethods: [viewHandler] }],
+      errors: [{ messageId: ClickNavigationMessageIds.clickNavigation }],
     },
     {
       code: '<button (click)="sortBy(\'Name\')">Name</button>',
       options: [{ navigationMethods: ['sortBy'] }],
-      errors: [{ messageId: 'clickNavigation' }],
+      errors: [{ messageId: ClickNavigationMessageIds.clickNavigation }],
     },
     {
       code: '<button (click)="paginator.nextPage()">Next</button>',
       options: [{ navigationMethods: ['nextPage'] }],
-      errors: [{ messageId: 'clickNavigation' }],
+      errors: [{ messageId: ClickNavigationMessageIds.clickNavigation }],
     },
     {
-      code: '@for (p of pageWindow(); track p) {\n  <button class="page-number" [class.active]="p === page()" (click)="goToPage(p)">{{ p }}</button>\n}',
-      options: [{ navigationMethods: ['goToPage'] }],
-      errors: [{ messageId: 'clickNavigation' }],
+      code: `@for (p of pageWindow(); track p) {\n  <button class="page-number" [class.active]="p === page()" (click)="${pagingHandler}(p)">{{ p }}</button>\n}`,
+      options: [{ navigationMethods: [pagingHandler] }],
+      errors: [{ messageId: ClickNavigationMessageIds.clickNavigation }],
     },
     {
-      code: '@if (totalPages() > 1) {\n  <button (click)="goToPage(1)">First</button>\n}',
-      options: [{ navigationMethods: ['goToPage'] }],
-      errors: [{ messageId: 'clickNavigation' }],
+      code: `@if (totalPages() > 1) {\n  <button (click)="${pagingHandler}(1)">First</button>\n}`,
+      options: [{ navigationMethods: [pagingHandler] }],
+      errors: [{ messageId: ClickNavigationMessageIds.clickNavigation }],
     },
     {
       code: '<div>@for (p of pages; track p) { <a (click)="jump(p)">{{ p }}</a> }</div>',
-      errors: [{ messageId: 'anchorWithoutHref' }],
+      errors: [{ messageId: ClickNavigationMessageIds.anchorWithoutHref }],
     },
   ],
 });
@@ -82,7 +91,7 @@ function component(body: string): string {
   return COMPONENT_HEADER + body + COMPONENT_FOOTER;
 }
 
-tsTester.run('no-component-navigation', noComponentNavigation, {
+tsTester.run(RuleNames.noComponentNavigation, noComponentNavigation, {
   valid: [
     {
       code: component('  save() {\n    this.api.save().subscribe(id => { void this.router.navigate(["/products", id]); });\n  }'),
@@ -110,24 +119,24 @@ tsTester.run('no-component-navigation', noComponentNavigation, {
   invalid: [
     {
       code: component('  goToPage(p: number) {\n    void this.router.navigate([], { queryParams: { page: p } });\n  }'),
-      errors: [{ messageId: 'componentNavigation' }],
+      errors: [{ messageId: ComponentNavigationMessageIds.componentNavigation }],
     },
     {
       code: component('  setView(mode: string) {\n    void this.router.navigate([], { queryParams: { view: mode } });\n  }'),
-      errors: [{ messageId: 'componentNavigation' }],
+      errors: [{ messageId: ComponentNavigationMessageIds.componentNavigation }],
     },
     {
       code: component('  signIn() {\n    globalThis.location.href = "/bff/login";\n  }'),
-      errors: [{ messageId: 'componentNavigation' }],
+      errors: [{ messageId: ComponentNavigationMessageIds.componentNavigation }],
     },
     {
       code: component('  search() {\n    void this.router.navigate(["/churches"], { queryParams: this.params() });\n  }'),
-      errors: [{ messageId: 'componentNavigation' }],
+      errors: [{ messageId: ComponentNavigationMessageIds.componentNavigation }],
     },
   ],
 });
 
-tsTester.run('no-component-data-fetch', noComponentDataFetch, {
+tsTester.run(RuleNames.noComponentDataFetch, noComponentDataFetch, {
   valid: [
     {
       name: 'a subject chain is wiring, not fetching: nothing is requested until the subject emits',
@@ -179,42 +188,42 @@ tsTester.run('no-component-data-fetch', noComponentDataFetch, {
     {
       name: 'a service call subscribed in ngOnInit',
       code: component('  ngOnInit() {\n    this.api.getChurchBySlug(this.slug).subscribe((c) => this.church.set(c));\n  }'),
-      errors: [{ messageId: 'initFetch' }],
+      errors: [{ messageId: ComponentDataFetchMessageIds.initFetch }],
     },
     {
       name: 'ngOnInit calling a private method that fetches',
       code: component('  ngOnInit() {\n    this.loadChurch();\n  }\n  private loadChurch() {\n    this.api.getChurchBySlug(this.slug).subscribe((c) => this.church.set(c));\n  }'),
-      errors: [{ messageId: 'initFetch' }],
+      errors: [{ messageId: ComponentDataFetchMessageIds.initFetch }],
     },
     {
       name: 'toSignal over a service call in a field initialiser',
       code: component('  protected readonly denominations = toSignal(this.churchService.getDenominations());'),
-      errors: [{ messageId: 'initFetch' }],
+      errors: [{ messageId: ComponentDataFetchMessageIds.initFetch }],
     },
     {
       name: 'kicking a request pipeline in ngOnInit',
       code: component('  ngOnInit() {\n    this.load$.next();\n  }'),
-      errors: [{ messageId: 'initKick' }],
+      errors: [{ messageId: ComponentDataFetchMessageIds.initKick }],
     },
     {
       name: 'awaiting firstValueFrom over a service call in ngOnInit',
       code: component('  async ngOnInit() {\n    const rows = await firstValueFrom(this.api.search());\n    this.rows.set(rows);\n  }'),
-      errors: [{ messageId: 'initFetch' }],
+      errors: [{ messageId: ComponentDataFetchMessageIds.initFetch }],
     },
     {
       name: 'a resolver supplying ONE payload does not license fetching the rest in-component',
       code: component('  ngOnInit() {\n    this.status.set(this.route.snapshot.data["status"]);\n    this.loadPreferences();\n  }\n  private loadPreferences() {\n    this.api.getPreferences().subscribe((p) => this.prefs.set(p));\n  }'),
-      errors: [{ messageId: 'initFetch' }],
+      errors: [{ messageId: ComponentDataFetchMessageIds.initFetch }],
     },
     {
       name: 'an ActivatedRoute stream whose handler loads, though the chain has no invocation',
       code: component('  ngOnInit() {\n    this.route.queryParams.subscribe((p) => this.load(p));\n  }\n  private load(p: object) {\n    this.api.search(p).subscribe((r) => this.rows.set(r));\n  }'),
-      errors: [{ messageId: 'initFetch' }, { messageId: 'initFetch' }],
+      errors: [{ messageId: ComponentDataFetchMessageIds.initFetch }, { messageId: ComponentDataFetchMessageIds.initFetch }],
     },
     {
       name: 'a fetch indirected one callback deep, inside a subscribe handler',
       code: component('  ngOnInit() {\n    this.api.getMe().subscribe(() => this.loadFriendRequests());\n  }\n  private loadFriendRequests() {\n    this.api.getRequests().subscribe((r) => this.requests.set(r));\n  }'),
-      errors: [{ messageId: 'initFetch' }, { messageId: 'initFetch' }],
+      errors: [{ messageId: ComponentDataFetchMessageIds.initFetch }, { messageId: ComponentDataFetchMessageIds.initFetch }],
     },
   ],
 });

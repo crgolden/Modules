@@ -19,6 +19,7 @@ import { walk } from '@crgolden/modules/synthetic-walker';
 | Module | What it is |
 |---|---|
 | `synthetic-walker` | Seeded random-walk engine for scheduled synthetic-user Playwright tests: a deterministic PRNG, a weighted action-graph walker, id-prefix locator helpers, and the marked synthetic login flow |
+| `testing` | The fleet's one TypeScript test-data generator, the counterpart of `Shared.Testing.Generated`: crypto-backed tokens, ids, counts, set members, addresses and instants, so no test spells a specimen value |
 
 ## Publishing
 

@@ -1,6 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { chromium, type BrowserContext } from '@playwright/test';
-import { CRGOLDEN_IDENTITY_ORIGIN, IDENTITY_LOGIN_PATH, installCredentialSerializationShim } from './index';
+import {
+  CRGOLDEN_IDENTITY_ORIGIN,
+  IDENTITY_LOGIN_PATH,
+  identityLoginUrl,
+  installCredentialSerializationShim,
+} from './index';
 
 type SessionCookie = {
   name: string;
@@ -122,7 +127,7 @@ export async function enrollPasskey(): Promise<void> {
       process.stdout.write(`\nSession accepted for ${email}. Registering the passkey.\n\n`);
     }
     else {
-      await page.goto(`${IDENTITY_LOGIN_PATH}?ReturnUrl=${encodeURIComponent(MANAGE_PASSKEYS_PATH)}`);
+      await page.goto(identityLoginUrl(MANAGE_PASSKEYS_PATH));
 
       process.stdout.write(
         `\nSign in as ${email} in the browser window that just opened.\n` +
