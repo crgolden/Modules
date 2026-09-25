@@ -1,0 +1,3 @@
+export const BASE64_QUANTUM_LENGTH = 4;
+
+export const MILLISECONDS_PER_SECOND = 1000;

@@ -1,6 +1,6 @@
 {
   "name": "@crgolden/modules",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Shared TypeScript modules for the crgolden fleet, published as one package with one subpath export per module.",
   "repository": {
     "type": "git",
@@ -22,7 +22,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "tsc -p tsconfig.test.json && node dist-test/eslint-angular/rules.test.js && node dist-test/synthetic-walker/pick-from-prefix.test.js && node dist-test/testing/testing.test.js",
+    "test": "tsc -p tsconfig.test.json && node dist-test/eslint-angular/rules.test.js && node dist-test/synthetic-walker/pick-from-prefix.test.js && node dist-test/synthetic-walker/credential-slot.test.js && node dist-test/testing/testing.test.js",
     "enroll-passkey": "npm run build && node dist/synthetic-walker/enroll-passkey.js",
     "prepack": "npm run build"
   },

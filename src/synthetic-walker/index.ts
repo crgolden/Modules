@@ -1,9 +1,12 @@
 import { test, type BrowserContext, type Locator, type Page, type TestInfo } from '@playwright/test';
+import { VirtualAuthenticatorOptions, WebAuthnCommands } from './chrome-devtools-protocol-constants';
+import { BASE64_QUANTUM_LENGTH, MILLISECONDS_PER_SECOND } from './encoding-constants';
+import { CRGOLDEN_IDENTITY_ORIGIN, IDENTITY_LOGIN_PATH, IDENTITY_RETURN_URL_PARAMETER } from './identity-constants';
+import { Mulberry32 } from './mulberry32-constants';
 
-export const CRGOLDEN_IDENTITY_ORIGIN = 'https://crgolden-identity.azurewebsites.net';
-export const IDENTITY_LOGIN_PATH = '/Account/Login';
+export { CRGOLDEN_IDENTITY_ORIGIN, IDENTITY_LOGIN_PATH, IDENTITY_RETURN_URL_PARAMETER };
 
-export const IDENTITY_RETURN_URL_PARAMETER = 'ReturnUrl';
+export const SEED_ANNOTATION_TYPE = 'synthetic-seed';
 
 export function identityLoginUrl(returnPath: string): string {
   return `${IDENTITY_LOGIN_PATH}?${IDENTITY_RETURN_URL_PARAMETER}=${encodeURIComponent(returnPath)}`;
@@ -13,7 +16,6 @@ export const DEFAULT_STEP_BUDGET = 40;
 export const MAX_STEP_BUDGET = 500;
 
 const UINT32_MAX = 0xffffffff;
-const UINT32_RANGE = 2 ** 32;
 const SEED_DECIMAL_PATTERN = /^\d{1,10}$/;
 
 export interface Rng {
@@ -40,7 +42,17 @@ export interface WalkResult {
   executedSteps: number;
 }
 
-export type CredentialSlot = 1 | 2 | 3;
+export const CREDENTIAL_SLOTS = [1, 2, 3] as const;
+
+export type CredentialSlot = (typeof CREDENTIAL_SLOTS)[number];
+
+export function toCredentialSlot(value: number): CredentialSlot {
+  const slot = CREDENTIAL_SLOTS.find(candidate => candidate === value);
+  if (slot === undefined) {
+    throw new Error(`${value} is not a passkey credential slot; the slots are ${CREDENTIAL_SLOTS.join(', ')}.`);
+  }
+  return slot;
+}
 
 export interface PasskeyCredential {
   id: string;
@@ -69,11 +81,11 @@ export interface IdentityLoginOptions {
 export function mulberry32(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
+    state = (state + Mulberry32.increment) >>> 0;
     let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / UINT32_RANGE;
+    t = Math.imul(t ^ (t >>> Mulberry32.firstShift), t | Mulberry32.oddBit);
+    t ^= t + Math.imul(t ^ (t >>> Mulberry32.secondShift), t | Mulberry32.mixMask);
+    return ((t ^ (t >>> Mulberry32.thirdShift)) >>> 0) / Mulberry32.outputRange;
   };
 }
 
@@ -206,30 +218,30 @@ export async function installCredentialSerializationShim(context: BrowserContext
 }
 
 function toStandardBase64(base64Url: string): string {
-  const padding = (4 - (base64Url.length % 4)) % 4;
+  const padding = (BASE64_QUANTUM_LENGTH - (base64Url.length % BASE64_QUANTUM_LENGTH)) % BASE64_QUANTUM_LENGTH;
   return base64Url.replaceAll('-', '+').replaceAll('_', '/') + '='.repeat(padding);
 }
 
 export function monotonicSignCountSeed(now: number = Date.now()): number {
-  return Math.floor(now / 1000);
+  return Math.floor(now / MILLISECONDS_PER_SECOND);
 }
 
 export async function seedPasskey(page: Page, credential: PasskeyCredential): Promise<void> {
   const context = page.context();
   const session = await context.newCDPSession(page);
-  await session.send('WebAuthn.disable');
-  await session.send('WebAuthn.enable');
-  const { authenticatorId } = await session.send('WebAuthn.addVirtualAuthenticator', {
+  await session.send(WebAuthnCommands.disable);
+  await session.send(WebAuthnCommands.enable);
+  const { authenticatorId } = await session.send(WebAuthnCommands.addVirtualAuthenticator, {
     options: {
-      protocol: 'ctap2',
-      transport: 'internal',
+      protocol: VirtualAuthenticatorOptions.protocol,
+      transport: VirtualAuthenticatorOptions.transport,
       hasResidentKey: true,
       hasUserVerification: true,
       isUserVerified: true,
       automaticPresenceSimulation: true,
     },
   });
-  await session.send('WebAuthn.addCredential', {
+  await session.send(WebAuthnCommands.addCredential, {
     authenticatorId,
     credential: {
       credentialId: toStandardBase64(credential.id),
@@ -302,7 +314,7 @@ function pickWeighted(rng: Rng, actions: readonly WalkerAction[]): WalkerAction 
 export async function walk(page: Page, actions: readonly WalkerAction[], options: WalkOptions): Promise<WalkResult> {
   const { seed, steps, testInfo } = options;
   const rng = createRng(seed);
-  testInfo.annotations.push({ type: 'synthetic-seed', description: String(seed) });
+  testInfo.annotations.push({ type: SEED_ANNOTATION_TYPE, description: String(seed) });
   let executedSteps = 0;
   for (let stepIndex = 1; stepIndex <= steps; stepIndex += 1) {
     await waitForAngularHydration(page);
