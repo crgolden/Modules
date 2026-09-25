@@ -1,6 +1,6 @@
 {
   "name": "@crgolden/modules",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Shared TypeScript modules for the crgolden fleet, published as one package with one subpath export per module.",
   "repository": {
     "type": "git",
@@ -21,8 +21,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && ngc -p tsconfig.primitives.json",
-    "test": "tsc -p tsconfig.test.json && node dist-test/eslint-angular/rules.test.js && node dist-test/synthetic-walker/pick-from-prefix.test.js && node dist-test/synthetic-walker/credential-slot.test.js && node dist-test/synthetic-walker/walk-configuration.test.js && node dist-test/testing/testing.test.js && node dist-test/design-gates/design-gates.test.js",
+    "build": "ngc -p tsconfig.primitives.json && tsc -p tsconfig.json",
+    "test": "tsc -p tsconfig.test.json && node dist-test/eslint-angular/rules.test.js && node dist-test/synthetic-walker/pick-from-prefix.test.js && node dist-test/synthetic-walker/credential-slot.test.js && node dist-test/synthetic-walker/walk-configuration.test.js && node dist-test/testing/testing.test.js && node dist-test/design-gates/design-gates.test.js && node dist-test/scroll-restoration/scroll-restoration.test.js",
     "enroll-passkey": "npm run build && node dist/synthetic-walker/enroll-passkey.js",
     "prepack": "npm run build"
   },
@@ -30,13 +30,25 @@
     "registry": "https://npm.pkg.github.com"
   },
   "peerDependencies": {
+    "@angular/common": ">=22 <23",
     "@angular/core": ">=22 <23",
+    "@angular/router": ">=22 <23",
     "@playwright/test": ">=1.61.0 <2",
     "eslint": ">=10 <11",
+    "rxjs": ">=7.8.2 <8",
     "tailwindcss": ">=4.3.3 <5"
   },
   "peerDependenciesMeta": {
+    "@angular/common": {
+      "optional": true
+    },
     "@angular/core": {
+      "optional": true
+    },
+    "@angular/router": {
+      "optional": true
+    },
+    "rxjs": {
       "optional": true
     },
     "@playwright/test": {
@@ -50,14 +62,17 @@
     }
   },
   "devDependencies": {
+    "@angular/common": "^22.1.5",
     "@angular/compiler": "^22.1.5",
     "@angular/compiler-cli": "^22.1.5",
     "@angular/core": "^22.1.5",
+    "@angular/router": "^22.1.5",
     "@angular-eslint/template-parser": "^22.5.0",
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.1",
     "@typescript-eslint/parser": "^8.70.0",
     "eslint": "^10.8.1",
+    "rxjs": "~7.8.2",
     "typescript": "~6.0.3"
   }
 }

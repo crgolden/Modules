@@ -4,5 +4,5 @@
     "outDir": "dist-test"
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/primitives/**"]
+  "exclude": ["src/primitives/**", "src/angular/**"]
 }

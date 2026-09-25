@@ -15,6 +15,6 @@
     "compilationMode": "partial",
     "strictTemplates": true
   },
-  "include": ["src/primitives/**/*.ts"],
+  "include": ["src/primitives/**/*.ts", "src/angular/**/*.ts"],
   "exclude": ["src/**/*.test.ts"]
 }

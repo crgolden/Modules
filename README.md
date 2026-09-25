@@ -18,6 +18,8 @@ import { walk } from '@crgolden/modules/synthetic-walker';
 
 | Module | What it is |
 |---|---|
+| `angular` | Angular providers the server-rendered apps share: `provideBrowserScrollRestorationWhenLeavingTheDocument`, which lets Back restore the reader's position after a click that left the document before hydration; compiled by Angular's compiler in partial mode |
+| `scroll-restoration` | The framework-free half of that provider: the `history.scrollRestoration` modes, the `beforeunload` event name and the hand-back logic, importable from Node (a Playwright spec) without loading Angular |
 | `primitives` | Shared Angular directives (buttons, card, page container, page section) that style their host element with Tailwind utilities from the consuming app's `@theme` tokens; compiled by Angular's compiler in partial mode |
 | `design-gates` | The Angular apps' design checks: every template and host class must reach CSS the build ships (a mistyped Tailwind utility compiles to nothing), every z-index utility must read a `--z-*` token, every `@theme` token must be read, plus the shared stylelint config for what `@layer base` may say |
 | `synthetic-walker` | Seeded random-walk engine for scheduled synthetic-user Playwright tests: a deterministic PRNG, a weighted action-graph walker, id-prefix locator helpers, and the marked synthetic login flow |
