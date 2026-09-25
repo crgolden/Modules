@@ -3,17 +3,24 @@ import { VirtualAuthenticatorOptions, WebAuthnCommands } from './chrome-devtools
 import { BASE64_QUANTUM_LENGTH, MILLISECONDS_PER_SECOND } from './encoding-constants';
 import { CRGOLDEN_IDENTITY_ORIGIN, IDENTITY_LOGIN_PATH, IDENTITY_RETURN_URL_PARAMETER } from './identity-constants';
 import { Mulberry32 } from './mulberry32-constants';
+import {
+  PASSKEY_CREDENTIAL_VARIABLE_PREFIX,
+  SEED_ANNOTATION_TYPE,
+  SYNTHETIC_SEED_VARIABLE,
+  SYNTHETIC_STEPS_VARIABLE,
+} from './walker-contract-constants';
 
 export { CRGOLDEN_IDENTITY_ORIGIN, IDENTITY_LOGIN_PATH, IDENTITY_RETURN_URL_PARAMETER };
 
-export const SEED_ANNOTATION_TYPE = 'synthetic-seed';
+export { SEED_ANNOTATION_TYPE, SYNTHETIC_SEED_VARIABLE, SYNTHETIC_STEPS_VARIABLE };
+
+export function passkeyCredentialVariable(slot: CredentialSlot): string {
+  return `${PASSKEY_CREDENTIAL_VARIABLE_PREFIX}${slot}`;
+}
 
 export function identityLoginUrl(returnPath: string): string {
   return `${IDENTITY_LOGIN_PATH}?${IDENTITY_RETURN_URL_PARAMETER}=${encodeURIComponent(returnPath)}`;
 }
-
-export const DEFAULT_STEP_BUDGET = 40;
-export const MAX_STEP_BUDGET = 500;
 
 const UINT32_MAX = 0xffffffff;
 const SEED_DECIMAL_PATTERN = /^\d{1,10}$/;
@@ -68,9 +75,15 @@ export interface SyntheticAccount {
 
 export interface LoginOptions {
   slot: CredentialSlot;
-  returnParam: 'returnUrl' | 'returnTo';
+  loginPath: string;
+  returnParam: string;
   returnPath: string;
   identityOrigin?: string;
+}
+
+export interface StepBudget {
+  defaultSteps: number;
+  maxSteps: number;
 }
 
 export interface IdentityLoginOptions {
@@ -105,39 +118,35 @@ export function createRng(seed: number): Rng {
 }
 
 export function resolveSeed(): number {
-  const raw = process.env['SYNTHETIC_SEED'];
+  const raw = process.env[SYNTHETIC_SEED_VARIABLE];
   if (!raw || !SEED_DECIMAL_PATTERN.test(raw)) {
-    throw new Error('SYNTHETIC_SEED must be set to a decimal uint32 so every walk is replayable.');
+    throw new Error(`${SYNTHETIC_SEED_VARIABLE} must be set to a decimal uint32 so every walk is replayable.`);
   }
   const seed = Number(raw);
   if (!Number.isInteger(seed) || seed < 0 || seed > UINT32_MAX) {
-    throw new Error(`SYNTHETIC_SEED must be a uint32; got ${raw}.`);
+    throw new Error(`${SYNTHETIC_SEED_VARIABLE} must be a uint32; got ${raw}.`);
   }
   return seed >>> 0;
 }
 
-export function resolveStepBudget(defaultSteps: number = DEFAULT_STEP_BUDGET): number {
-  const raw = process.env['SYNTHETIC_STEPS'];
+export function resolveStepBudget(budget: StepBudget): number {
+  const raw = process.env[SYNTHETIC_STEPS_VARIABLE];
   if (!raw) {
-    return defaultSteps;
+    return budget.defaultSteps;
   }
   const steps = Number(raw);
-  if (!Number.isInteger(steps) || steps < 1 || steps > MAX_STEP_BUDGET) {
-    throw new Error(`SYNTHETIC_STEPS must be an integer between 1 and ${MAX_STEP_BUDGET}; got ${raw}.`);
+  if (!Number.isInteger(steps) || steps < 1 || steps > budget.maxSteps) {
+    throw new Error(`${SYNTHETIC_STEPS_VARIABLE} must be an integer between 1 and ${budget.maxSteps}; got ${raw}.`);
   }
   return steps;
 }
 
-function requireString(source: Record<string, unknown>, field: string, envName: string): string {
-  const value = source[field];
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new Error(`${envName} is missing the non-empty string field '${field}'.`);
-  }
-  return value;
+function isNonEmptyText(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
 }
 
 export function resolveSyntheticAccount(slot: CredentialSlot): SyntheticAccount {
-  const credentialName = `PASSKEY_CREDENTIAL${slot}`;
+  const credentialName = passkeyCredentialVariable(slot);
   const rawCredential = process.env[credentialName];
   if (!rawCredential) {
     throw new Error(`${credentialName} must be set for a synthetic walk.`);
@@ -151,16 +160,14 @@ export function resolveSyntheticAccount(slot: CredentialSlot): SyntheticAccount 
   if (typeof parsed !== 'object' || parsed === null) {
     throw new Error(`${credentialName} must be a JSON object holding the five passkey fields.`);
   }
-  const fields = parsed as Record<string, unknown>;
-  return {
-    credential: {
-      id: requireString(fields, 'id', credentialName),
-      rpId: requireString(fields, 'rpId', credentialName),
-      userHandle: requireString(fields, 'userHandle', credentialName),
-      privateKey: requireString(fields, 'privateKey', credentialName),
-      publicKey: requireString(fields, 'publicKey', credentialName),
-    },
-  };
+  const { id, rpId, userHandle, privateKey, publicKey } = parsed as Partial<Record<keyof PasskeyCredential, unknown>>;
+  if (isNonEmptyText(id) && isNonEmptyText(rpId) && isNonEmptyText(userHandle) && isNonEmptyText(privateKey) && isNonEmptyText(publicKey)) {
+    return { credential: { id, rpId, userHandle, privateKey, publicKey } };
+  }
+  const missing = Object.entries({ id, rpId, userHandle, privateKey, publicKey })
+    .filter(([, value]) => !isNonEmptyText(value))
+    .map(([field]) => field);
+  throw new Error(`${credentialName} is missing the non-empty string field(s) ${missing.join(', ')}.`);
 }
 
 const CREDENTIAL_SERIALIZATION_SHIM = `
@@ -256,11 +263,11 @@ export async function seedPasskey(page: Page, credential: PasskeyCredential): Pr
 }
 
 export async function loginWithPasskey(page: Page, options: LoginOptions): Promise<void> {
-  const { slot, returnParam, returnPath } = options;
+  const { slot, loginPath, returnParam, returnPath } = options;
   const identityOrigin = options.identityOrigin ?? CRGOLDEN_IDENTITY_ORIGIN;
   const { credential } = resolveSyntheticAccount(slot);
   await seedPasskey(page, credential);
-  await page.goto(`/bff/login?${returnParam}=${encodeURIComponent(returnPath)}`);
+  await page.goto(`${loginPath}?${returnParam}=${encodeURIComponent(returnPath)}`);
   await page.waitForURL(url => url.origin !== identityOrigin && url.pathname.startsWith(returnPath));
   await waitForAngularHydration(page);
 }
