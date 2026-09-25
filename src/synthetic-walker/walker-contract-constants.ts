@@ -4,4 +4,6 @@ export const SYNTHETIC_STEPS_VARIABLE = 'SYNTHETIC_STEPS';
 
 export const PASSKEY_CREDENTIAL_VARIABLE_PREFIX = 'PASSKEY_CREDENTIAL';
 
+export const CREDENTIAL_SLOTS = [1, 2, 3] as const;
+
 export const SEED_ANNOTATION_TYPE = 'synthetic-seed';

@@ -4,6 +4,7 @@ import { BASE64_QUANTUM_LENGTH, MILLISECONDS_PER_SECOND } from './encoding-const
 import { CRGOLDEN_IDENTITY_ORIGIN, IDENTITY_LOGIN_PATH, IDENTITY_RETURN_URL_PARAMETER } from './identity-constants';
 import { Mulberry32 } from './mulberry32-constants';
 import {
+  CREDENTIAL_SLOTS,
   PASSKEY_CREDENTIAL_VARIABLE_PREFIX,
   SEED_ANNOTATION_TYPE,
   SYNTHETIC_SEED_VARIABLE,
@@ -12,7 +13,7 @@ import {
 
 export { CRGOLDEN_IDENTITY_ORIGIN, IDENTITY_LOGIN_PATH, IDENTITY_RETURN_URL_PARAMETER };
 
-export { SEED_ANNOTATION_TYPE, SYNTHETIC_SEED_VARIABLE, SYNTHETIC_STEPS_VARIABLE };
+export { CREDENTIAL_SLOTS, SEED_ANNOTATION_TYPE, SYNTHETIC_SEED_VARIABLE, SYNTHETIC_STEPS_VARIABLE };
 
 export function passkeyCredentialVariable(slot: CredentialSlot): string {
   return `${PASSKEY_CREDENTIAL_VARIABLE_PREFIX}${slot}`;
@@ -48,8 +49,6 @@ export interface WalkOptions {
 export interface WalkResult {
   executedSteps: number;
 }
-
-export const CREDENTIAL_SLOTS = [1, 2, 3] as const;
 
 export type CredentialSlot = (typeof CREDENTIAL_SLOTS)[number];
 
