@@ -50,7 +50,7 @@ function theNextNavigationReclaimsRestorationAfterALeaveThatNeverLeft(): void {
 function thePublishedCoreIsCommonJsRatherThanAnEsModuleNodeHadToDetect(): void {
   const published: unknown = require('../../dist/scroll-restoration/index.js');
 
-  assert.notEqual(Object.prototype.toString.call(published), '[object Module]');
+  assert.equal(Object.getPrototypeOf(published), Object.prototype);
 }
 
 leavingTheDocumentHandsRestorationToTheBrowser();

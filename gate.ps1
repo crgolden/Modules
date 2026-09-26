@@ -15,6 +15,7 @@ $env:CI = 'true'
 if ($env:TZ -ne 'UTC') { Write-Host 'GATE: FAILED (TZ pin)'; exit 1 }
 Set-Location $repo
 Initialize-GateState 'Modules' $repo
+Invoke-CatalogSteps
 
 $installed = (Test-Path (Join-Path $repo 'node_modules\.package-lock.json')) -and
     (Test-Path (Join-Path $repo 'node_modules\.bin\tsc.cmd'))
