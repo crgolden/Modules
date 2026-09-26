@@ -81,7 +81,7 @@ function selectorPartsFor(css: string, className: string): { parts: string[]; un
     .flatMap((selector) => splitSelectorList(selector).map((part) => part.trim()))
     .filter((part) => mentions.test(part));
   const reaches = (part: string): boolean =>
-    (subjectCompound.test(part) && !/[ >+~]/.test(part)) || actsAsAncestor.test(part);
+    (subjectCompound.test(part) && !/[ >+~]/.test(part.replace(mentions, ''))) || actsAsAncestor.test(part);
   return { parts, unscoped: parts.filter(reaches) };
 }
 

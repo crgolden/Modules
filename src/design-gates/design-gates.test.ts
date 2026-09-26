@@ -40,6 +40,36 @@ function aShippedUtilityPassesAndAMistypedOneFails(): void {
   assert.deepEqual(result.failures.map((failure) => failure.split(':')[0]), [`.${mistyped}`]);
 }
 
+function arbitraryCalcUtility(): { name: string; selector: string } {
+  const name = `${newText()}-[calc(${newText()}_+_${newText()})]`;
+  return { name, selector: `.${name.replace(/[[\]()+]/g, '\\$&')}` };
+}
+
+function aClassNameCarryingAnEscapedPlusIsReachedDirectly(): void {
+  const utility = arbitraryCalcUtility();
+
+  const result = analyze(
+    [builtStylesheet(`${utility.selector}{padding-bottom:1rem}`)],
+    [template(`<div class="${utility.name}"></div>`)],
+    [],
+  );
+
+  assert.deepEqual(result.failures, []);
+}
+
+function aClassNameCarryingAnEscapedPlusUnderAnAncestorStillFails(): void {
+  const utility = arbitraryCalcUtility();
+  const ancestor = newText();
+
+  const result = analyze(
+    [builtStylesheet(`.${ancestor} ${utility.selector}{padding-bottom:1rem}`)],
+    [template(`<div class="${utility.name}"></div>`)],
+    [],
+  );
+
+  assert.deepEqual(result.failures.map((failure) => failure.split(':')[0]), [`.${utility.name}`]);
+}
+
 function aHostClassLiteralIsReadLikeATemplateClass(): void {
   const shipped = newText();
   const missing = newText();
@@ -259,6 +289,8 @@ function aBuildThatShipsNoStylesheetFails(): void {
 }
 
 aShippedUtilityPassesAndAMistypedOneFails();
+aClassNameCarryingAnEscapedPlusIsReachedDirectly();
+aClassNameCarryingAnEscapedPlusUnderAnAncestorStillFails();
 aBuiltAppWhoseClassesAndTokensShipPasses();
 anAppWithNoBuildFailsRatherThanPassingVacuously();
 aBuildThatShipsNoStylesheetFails();
