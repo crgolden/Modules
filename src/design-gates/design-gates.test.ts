@@ -176,14 +176,16 @@ function aShadowTokenIsReadThroughTheUtilityTailwindInlinesItInto(): void {
   const plain = `--shadow-${newText()}`;
   const mergedWithPlain = `--shadow-${newText()}`;
   const onHover = `--shadow-${newText()}`;
+  const readThroughVar = `--shadow-${newText()}`;
   const unused = `--shadow-${newText()}`;
   const inlined = `{--tw-shadow: 0 ${newCount()}px ${newCount()}px var(--tw-shadow-color, oklch(0 0 0 / .1))}`;
   const utility = (token: string): string => token.slice('--'.length);
 
   const found = unconsumedThemeTokens({
-    themeCss: `@theme {\n  ${plain}: 0 1px 2px black;\n  ${mergedWithPlain}: 0 1px 2px black;\n  ${onHover}: 0 4px 8px black;\n  ${unused}: 0 8px 16px black;\n}`,
+    themeCss: `@theme {\n  ${plain}: 0 1px 2px black;\n  ${mergedWithPlain}: 0 1px 2px black;\n  ${onHover}: 0 4px 8px black;\n  ${readThroughVar}: 0 0 0 3px black;\n  ${unused}: 0 8px 16px black;\n}`,
     stylesheets: [
       `.${utility(plain)},.${utility(mergedWithPlain)}${inlined}.hover\\:${utility(onHover)}:hover${inlined}`,
+      `input:focus{box-shadow:var(${readThroughVar})}`,
     ],
   });
 

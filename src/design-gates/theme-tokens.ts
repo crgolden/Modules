@@ -30,7 +30,10 @@ export function unconsumedThemeTokens(options: UnconsumedThemeTokensOptions): st
   return themeTokensIn(options.themeCss).filter((token) => {
     if (allowed.has(token)) return false;
     if (BUILD_TIME_THEME_NAMESPACES.some((namespace) => namespace.test(token))) return false;
-    if (INLINED_THEME_NAMESPACES.some((namespace) => token.startsWith(namespace))) return !namesItsUtility(token, body);
-    return !new RegExp(`var\\(\\s*${token}(?![a-z0-9-])`, 'i').test(body);
+    const readThroughVar = new RegExp(`var\\(\\s*${token}(?![a-z0-9-])`, 'i').test(body);
+    if (INLINED_THEME_NAMESPACES.some((namespace) => token.startsWith(namespace))) {
+      return !readThroughVar && !namesItsUtility(token, body);
+    }
+    return !readThroughVar;
   });
 }
