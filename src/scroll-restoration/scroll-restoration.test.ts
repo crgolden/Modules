@@ -53,8 +53,19 @@ function thePublishedCoreIsCommonJsRatherThanAnEsModuleNodeHadToDetect(): void {
   assert.equal(Object.getPrototypeOf(published), Object.prototype);
 }
 
+function aBundlerImportingTheCoreGetsAnEsModuleAndNodeRequiringItGetsCommonJs(): void {
+  const manifest = require('../../package.json') as { exports: Record<string, Record<string, string>> };
+  const entry = manifest.exports['./scroll-restoration'];
+  const imported: unknown = require(`../../${entry['import']}`);
+  const required: unknown = require(`../../${entry['default']}`);
+
+  assert.equal(Object.getPrototypeOf(imported), null);
+  assert.equal(Object.getPrototypeOf(required), Object.prototype);
+}
+
 leavingTheDocumentHandsRestorationToTheBrowser();
 theRouterKeepsRestorationWhileTheDocumentIsAlive();
 theNextNavigationReclaimsRestorationAfterALeaveThatNeverLeft();
 thePublishedCoreIsCommonJsRatherThanAnEsModuleNodeHadToDetect();
+aBundlerImportingTheCoreGetsAnEsModuleAndNodeRequiringItGetsCommonJs();
 console.log('scroll-restoration: the browser restores across a document leave and the router reclaims on navigation');

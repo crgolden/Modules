@@ -1,12 +1,17 @@
 {
   "name": "@crgolden/modules",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Shared TypeScript modules for the crgolden fleet, published as one package with one subpath export per module.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/crgolden/Modules.git"
   },
   "exports": {
+    "./scroll-restoration": {
+      "types": "./dist/scroll-restoration/index.d.ts",
+      "import": "./dist/esm/scroll-restoration/index.js",
+      "default": "./dist/scroll-restoration/index.js"
+    },
     "./*": {
       "types": "./dist/*/index.d.ts",
       "default": "./dist/*/index.js"
@@ -21,7 +26,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "ngc -p tsconfig.primitives.json && tsc -p tsconfig.json",
+    "build": "ngc -p tsconfig.primitives.json && tsc -p tsconfig.json && tsc -p tsconfig.esm.json && node scripts/mark-esm-output.mjs",
     "test": "tsc -p tsconfig.test.json && node dist-test/eslint-angular/rules.test.js && node dist-test/synthetic-walker/pick-from-prefix.test.js && node dist-test/synthetic-walker/credential-slot.test.js && node dist-test/synthetic-walker/walk-configuration.test.js && node dist-test/testing/testing.test.js && node dist-test/design-gates/design-gates.test.js && node dist-test/scroll-restoration/scroll-restoration.test.js && node dist-test/server-startup/server-startup.test.js",
     "enroll-passkey": "npm run build && node dist/synthetic-walker/enroll-passkey.js",
     "prepack": "npm run build"
