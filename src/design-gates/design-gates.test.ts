@@ -172,6 +172,24 @@ function aThemeTokenNothingReadsIsReported(): void {
   assert.deepEqual(found, [unconsumed]);
 }
 
+function aShadowTokenIsReadThroughTheUtilityTailwindInlinesItInto(): void {
+  const plain = `--shadow-${newText()}`;
+  const mergedWithPlain = `--shadow-${newText()}`;
+  const onHover = `--shadow-${newText()}`;
+  const unused = `--shadow-${newText()}`;
+  const inlined = `{--tw-shadow: 0 ${newCount()}px ${newCount()}px var(--tw-shadow-color, oklch(0 0 0 / .1))}`;
+  const utility = (token: string): string => token.slice('--'.length);
+
+  const found = unconsumedThemeTokens({
+    themeCss: `@theme {\n  ${plain}: 0 1px 2px black;\n  ${mergedWithPlain}: 0 1px 2px black;\n  ${onHover}: 0 4px 8px black;\n  ${unused}: 0 8px 16px black;\n}`,
+    stylesheets: [
+      `.${utility(plain)},.${utility(mergedWithPlain)}${inlined}.hover\\:${utility(onHover)}:hover${inlined}`,
+    ],
+  });
+
+  assert.deepEqual(found, [unused]);
+}
+
 function aLiteralColorIsBannedUnlessItReadsAToken(): void {
   const patterns = everyColorPattern();
   const literal = `oklch(0.${newCount()} 0 0)`;
@@ -250,6 +268,7 @@ aPlainUtilityRivallingADirectivePropertyFails();
 aVariantOrAnUnrelatedUtilityBesideADirectivePasses();
 aZIndexUtilityMustReadALadderToken();
 aThemeTokenNothingReadsIsReported();
+aShadowTokenIsReadThroughTheUtilityTailwindInlinesItInto();
 aLiteralColorIsBannedUnlessItReadsAToken();
 aNamedColorIsBannedButTransparentAndATokenNamingOneAreNot();
 console.log('design-gates: every template and host class reaches shipped CSS, and every token is read');
