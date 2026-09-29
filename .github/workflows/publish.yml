@@ -3,10 +3,12 @@ name: Publish
 on:
   push:
     branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 concurrency:
-  group: publish
+  group: publish-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -18,6 +20,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -26,7 +30,10 @@ jobs:
           registry-url: https://npm.pkg.github.com
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
+
+      - name: Lint
+        run: npm run lint
 
       - name: Build
         run: npm run build
@@ -34,7 +41,42 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: SonarCloud analysis
+        if: github.actor != 'dependabot[bot]'
+        uses: sonarsource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
+            -Dsonar.exclusions=**/node_modules/**,**/*.d.ts,dist/**,dist-test/**
+            -Dsonar.test.inclusions=**/*.test.ts
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+            -Dsonar.qualitygate.wait=true
+            -Dsonar.scanner.skipJreProvisioning=true
+
+      - name: Fail on open Sonar issues
+        if: github.actor != 'dependabot[bot]'
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY }}
+          PULL_REQUEST: ${{ github.event.pull_request.number }}
+          BRANCH: ${{ github.ref_name }}
+        shell: pwsh
+        run: |
+          $scope = if ($env:PULL_REQUEST) { "pullRequest=$env:PULL_REQUEST" } else { "branch=$env:BRANCH" }
+          $auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$($env:SONAR_TOKEN):"))
+          $report = Invoke-RestMethod -Headers @{ Authorization = "Basic $auth" } -Uri "https://sonarcloud.io/api/issues/search?componentKeys=$env:SONAR_PROJECT_KEY&$scope&issueStatuses=OPEN,CONFIRMED&ps=500"
+          foreach ($issue in $report.issues) {
+            Write-Output "::error file=$($issue.component -replace '^[^:]*:'),line=$($issue.line)::$($issue.rule) $($issue.message)"
+          }
+          Write-Output "$($report.total) open Sonar issue(s) on $scope"
+          if ($null -eq $report.total -or $report.total -ne 0) { exit 1 }
+
       - name: Publish when the version is new
+        if: github.event_name != 'pull_request'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

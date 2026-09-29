@@ -1,7 +1,7 @@
 import { withoutComments } from './utilities';
 
 const THEME_BLOCK = /@theme\b[^{]*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g;
-const THEME_TOKEN = /^\s*(--[a-z0-9-]+)\s*:/gim;
+const THEME_TOKEN = /^[ \t\f]*(--[a-z0-9-]+)\s*:/gim;
 
 export const BUILD_TIME_THEME_NAMESPACES: readonly RegExp[] = [/^--breakpoint-/];
 
@@ -30,7 +30,7 @@ export function unconsumedThemeTokens(options: UnconsumedThemeTokensOptions): st
   return themeTokensIn(options.themeCss).filter((token) => {
     if (allowed.has(token)) return false;
     if (BUILD_TIME_THEME_NAMESPACES.some((namespace) => namespace.test(token))) return false;
-    const readThroughVar = new RegExp(`var\\(\\s*${token}(?![a-z0-9-])`, 'i').test(body);
+    const readThroughVar = new RegExp(String.raw`var\(\s*${token}(?![a-z0-9-])`, 'i').test(body);
     if (INLINED_THEME_NAMESPACES.some((namespace) => token.startsWith(namespace))) {
       return !readThroughVar && !namesItsUtility(token, body);
     }

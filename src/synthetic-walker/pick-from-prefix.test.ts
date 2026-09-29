@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import type { Page } from '@playwright/test';
 import { createRng, pickFromPrefix } from './index';
 import { newText } from '../testing';
@@ -43,7 +44,7 @@ function pageWhoseTilesArriveOnlyOnceWaitedFor(): StubbedPage {
   };
 }
 
-async function aTileArrivingAfterTheWalkHasAskedForOne(): Promise<void> {
+test('a tile arriving after the walk has asked for one is waited for, not counted past', async () => {
   const { page, calls, waitFor, count } = pageWhoseTilesArriveOnlyOnceWaitedFor();
 
   const picked = (await pickFromPrefix(page, createRng(SEED), TILE_ID_PREFIX)) as unknown as {
@@ -57,13 +58,4 @@ async function aTileArrivingAfterTheWalkHasAskedForOne(): Promise<void> {
     `pickFromPrefix counted before waiting, so the count describes a DOM that may still be filling: ${JSON.stringify(calls.map(call => call.name))}`,
   );
   assert.ok(calls.includes(count), 'pickFromPrefix never counted the tiles it picked from.');
-}
-
-aTileArrivingAfterTheWalkHasAskedForOne()
-  .then(() => {
-    console.log('pick-from-prefix: a tile arriving mid-pick is waited for, not counted past');
-  })
-  .catch((error: unknown) => {
-    console.error(error);
-    process.exitCode = 1;
-  });
+});

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { after, test } from 'node:test';
 import {
   CREDENTIAL_SLOTS,
   passkeyCredentialVariable,
@@ -16,39 +17,36 @@ function newCredential(): PasskeyCredential {
   return { id: newText(), rpId: newText(), userHandle: newText(), privateKey: newText(), publicKey: newText() };
 }
 
-function aCompleteCredentialIsReadBack(): void {
+after(() => {
+  delete process.env[CREDENTIAL_VARIABLE];
+  delete process.env[SYNTHETIC_STEPS_VARIABLE];
+});
+
+test('a complete credential is read back', () => {
   const credential = newCredential();
   process.env[CREDENTIAL_VARIABLE] = JSON.stringify(credential);
 
   assert.deepEqual(resolveSyntheticAccount(SLOT).credential, credential);
-}
+});
 
-function aMissingFieldIsNamed(): void {
+test('a missing credential field is named', () => {
   const incomplete: Partial<PasskeyCredential> = newCredential();
   delete incomplete.rpId;
   process.env[CREDENTIAL_VARIABLE] = JSON.stringify(incomplete);
 
   assert.throws(() => resolveSyntheticAccount(SLOT), /rpId/);
-}
+});
 
-function anUnsetStepCountTakesTheConfiguredDefault(): void {
+test('an unset step count takes the configured default', () => {
   delete process.env[SYNTHETIC_STEPS_VARIABLE];
   const defaultSteps = newCount();
 
   assert.equal(resolveStepBudget({ defaultSteps, maxSteps: defaultSteps + newCount() }), defaultSteps);
-}
+});
 
-function aStepCountAboveTheConfiguredMaximumIsRefused(): void {
+test('a step count above the configured maximum is refused', () => {
   const maxSteps = newCount();
   process.env[SYNTHETIC_STEPS_VARIABLE] = String(maxSteps + newCount());
 
   assert.throws(() => resolveStepBudget({ defaultSteps: maxSteps, maxSteps }), new RegExp(String(maxSteps)));
-}
-
-aCompleteCredentialIsReadBack();
-aMissingFieldIsNamed();
-anUnsetStepCountTakesTheConfiguredDefault();
-aStepCountAboveTheConfiguredMaximumIsRefused();
-delete process.env[CREDENTIAL_VARIABLE];
-delete process.env[SYNTHETIC_STEPS_VARIABLE];
-console.log('walk-configuration: credentials and step budgets are read from configuration, and refused when out of shape');
+});

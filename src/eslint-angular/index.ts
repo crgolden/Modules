@@ -1,19 +1,10 @@
-import noClickNavigation, {
-  ClickNavigationMessageIds,
-  SUGGESTED_NAVIGATION_METHODS,
-  handlerNameOf,
-} from './no-click-navigation';
-import noComponentNavigation, { ComponentNavigationMessageIds, REDIRECT_CALLBACKS } from './no-component-navigation';
-import noComponentDataFetch, { ComponentDataFetchMessageIds } from './no-component-data-fetch';
+import noClickNavigation from './no-click-navigation';
+import noComponentNavigation from './no-component-navigation';
+import noComponentDataFetch from './no-component-data-fetch';
 
-export {
-  ClickNavigationMessageIds,
-  ComponentDataFetchMessageIds,
-  ComponentNavigationMessageIds,
-  SUGGESTED_NAVIGATION_METHODS,
-  REDIRECT_CALLBACKS,
-  handlerNameOf,
-};
+export { ClickNavigationMessageIds, SUGGESTED_NAVIGATION_METHODS, handlerNameOf } from './no-click-navigation';
+export { ComponentNavigationMessageIds, REDIRECT_CALLBACKS } from './no-component-navigation';
+export { ComponentDataFetchMessageIds } from './no-component-data-fetch';
 
 export const RuleNames = {
   noClickNavigation: 'no-click-navigation',

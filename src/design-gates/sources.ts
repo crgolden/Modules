@@ -30,8 +30,8 @@ function filesUnder(directory: string, keep: (path: string) => boolean): string[
 
 function read(repoRoot: string, paths: readonly string[]): SourceFile[] {
   return paths.map((path) => ({
-    path: relative(repoRoot, path).replace(/\\/g, '/'),
-    text: readFileSync(path, 'utf8').replace(/\r\n/g, '\n'),
+    path: relative(repoRoot, path).replaceAll('\\', '/'),
+    text: readFileSync(path, 'utf8').replaceAll('\r\n', '\n'),
   }));
 }
 

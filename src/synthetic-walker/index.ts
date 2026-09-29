@@ -314,7 +314,11 @@ function pickWeighted(rng: Rng, actions: readonly WalkerAction[]): WalkerAction 
       return action;
     }
   }
-  return actions[actions.length - 1];
+  const lastAction = actions.at(-1);
+  if (lastAction === undefined) {
+    throw new RangeError('pickWeighted needs at least one action to pick from.');
+  }
+  return lastAction;
 }
 
 export async function walk(page: Page, actions: readonly WalkerAction[], options: WalkOptions): Promise<WalkResult> {

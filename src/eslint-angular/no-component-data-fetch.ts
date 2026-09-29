@@ -10,11 +10,11 @@ export const ComponentDataFetchMessageIds = {
 
 type ComponentDataFetchMessageId = (typeof ComponentDataFetchMessageIds)[keyof typeof ComponentDataFetchMessageIds];
 
-const FETCH_TERMINATORS = ['subscribe'];
-const FETCH_FUNCTIONS = ['firstValueFrom', 'lastValueFrom', 'toSignal'];
+const FETCH_TERMINATORS: ReadonlySet<string> = new Set(['subscribe']);
+const FETCH_FUNCTIONS: ReadonlySet<string> = new Set(['firstValueFrom', 'lastValueFrom', 'toSignal']);
 const INIT_METHODS = ['ngOnInit', 'constructor'];
 
-const CLOSURE_TYPES = ['ArrowFunctionExpression', 'FunctionExpression', 'FunctionDeclaration'];
+const CLOSURE_TYPES: ReadonlySet<string> = new Set(['ArrowFunctionExpression', 'FunctionExpression', 'FunctionDeclaration']);
 
 function isComponentClass(node: AnyNode): boolean {
   const decorators = node.decorators as { expression?: { callee?: { name?: string } } }[] | undefined;
@@ -35,12 +35,8 @@ function subscriptionEmitsAtInit(node: AnyNode): boolean {
     && (chainProducesRequest(node.callee as AnyNode | undefined) || routeStreamSubscribe(node));
 }
 
-function walkInitPath(node: AnyNode | null | undefined, visit: (n: AnyNode) => void): void {
-  if (!node || typeof node.type !== 'string') {
-    return;
-  }
-  visit(node);
-  const descendIntoHandler = subscriptionEmitsAtInit(node);
+function childNodesByKey(node: AnyNode): [string, AnyNode][] {
+  const entries: [string, AnyNode][] = [];
   for (const key of Object.keys(node)) {
     if (key === 'parent') {
       continue;
@@ -49,19 +45,30 @@ function walkInitPath(node: AnyNode | null | undefined, visit: (n: AnyNode) => v
     const children = Array.isArray(value) ? value : [value];
     for (const child of children) {
       const candidate = child as AnyNode | null;
-      if (!candidate || typeof candidate.type !== 'string') {
-        continue;
+      if (candidate && typeof candidate.type === 'string') {
+        entries.push([key, candidate]);
       }
-      const isClosure = CLOSURE_TYPES.includes(candidate.type);
-      if (isClosure && !(descendIntoHandler && key === 'arguments')) {
-        continue;
-      }
-      walkInitPath(candidate, visit);
     }
+  }
+  return entries;
+}
+
+function walkInitPath(node: AnyNode | null | undefined, visit: (n: AnyNode) => void): void {
+  if (!node || typeof node.type !== 'string') {
+    return;
+  }
+  visit(node);
+  const descendIntoHandler = subscriptionEmitsAtInit(node);
+  for (const [key, candidate] of childNodesByKey(node)) {
+    const isClosure = CLOSURE_TYPES.has(candidate.type);
+    if (isClosure && !(descendIntoHandler && key === 'arguments')) {
+      continue;
+    }
+    walkInitPath(candidate, visit);
   }
 }
 
-const OPERATOR_CALLS = ['pipe', 'subscribe'];
+const OPERATOR_CALLS: ReadonlySet<string> = new Set(['pipe', 'subscribe']);
 
 function chainProducesRequest(callee: AnyNode | undefined): boolean {
   let current: AnyNode | undefined = callee;
@@ -71,7 +78,7 @@ function chainProducesRequest(callee: AnyNode | undefined): boolean {
       const property = inner?.type === 'MemberExpression'
         ? (inner.property as unknown as { name?: string })?.name
         : undefined;
-      if (!property || !OPERATOR_CALLS.includes(property)) {
+      if (!property || !OPERATOR_CALLS.has(property)) {
         return true;
       }
       current = (inner as AnyNode).object as AnyNode;
@@ -106,10 +113,10 @@ function isEagerFetch(node: AnyNode): boolean {
     return false;
   }
   const name = calleeName(node);
-  if (name && FETCH_FUNCTIONS.includes(name)) {
+  if (name && FETCH_FUNCTIONS.has(name)) {
     return chainProducesRequest(((node.arguments as AnyNode[]) ?? [])[0]);
   }
-  if (name && FETCH_TERMINATORS.includes(name)) {
+  if (name && FETCH_TERMINATORS.has(name)) {
     return chainProducesRequest(node.callee as AnyNode);
   }
   return false;
@@ -125,7 +132,7 @@ function isPipelineKick(node: AnyNode): boolean {
     && (object.object as AnyNode | undefined)?.type === 'ThisExpression';
 }
 
-const ROUTE_STREAMS = ['queryParams', 'params', 'paramMap', 'queryParamMap', 'data', 'fragment'];
+const ROUTE_STREAMS: ReadonlySet<string> = new Set(['queryParams', 'params', 'paramMap', 'queryParamMap', 'data', 'fragment']);
 
 function walkIncludingClosures(node: AnyNode | null | undefined, visit: (n: AnyNode) => void): void {
   if (!node || typeof node.type !== 'string') {
@@ -159,7 +166,7 @@ function routeStreamSubscribe(node: AnyNode): boolean {
     if (current.type === 'MemberExpression') {
       const property = (current.property as unknown as { name?: string })?.name;
       const object = current.object as AnyNode | undefined;
-      if (property && ROUTE_STREAMS.includes(property)
+      if (property && ROUTE_STREAMS.has(property)
         && object?.type === 'MemberExpression'
         && ((object.property as unknown as { name?: string })?.name === 'route')) {
         return true;
@@ -200,6 +207,58 @@ function bodyFetches(body: AnyNode | null | undefined): boolean {
   return found;
 }
 
+function classMethodBody(classBody: AnyNode, name: string): AnyNode | null {
+  const members = (classBody.body ?? []) as AnyNode[];
+  for (const member of members) {
+    if (member.type !== 'MethodDefinition') {
+      continue;
+    }
+    const key = member.key as unknown as { name?: string };
+    if (key?.name === name || (name === 'constructor' && member.kind === 'constructor')) {
+      return (member.value as AnyNode)?.body as AnyNode;
+    }
+  }
+  return null;
+}
+
+function callsFetchingMethod(node: AnyNode, classBody: AnyNode): boolean {
+  if (node.type !== 'CallExpression') {
+    return false;
+  }
+  const callee = node.callee as AnyNode | undefined;
+  if (callee?.type !== 'MemberExpression' || (callee.object as AnyNode | undefined)?.type !== 'ThisExpression') {
+    return false;
+  }
+  const named = (callee.property as unknown as { name?: string })?.name;
+  return named ? bodyFetches(classMethodBody(classBody, named)) : false;
+}
+
+function routeStreamHandlerLoads(subscription: AnyNode, classBody: AnyNode): boolean {
+  let handlerLoads = false;
+  for (const arg of (subscription.arguments as AnyNode[]) ?? []) {
+    walkIncludingClosures(arg, deep => {
+      if (isEagerFetch(deep) || isPipelineKick(deep) || callsFetchingMethod(deep, classBody)) {
+        handlerLoads = true;
+      }
+    });
+  }
+  return handlerLoads;
+}
+
+function initPathBodies(classBody: AnyNode): { where: string; body: AnyNode | null }[] {
+  const members = (classBody.body ?? []) as AnyNode[];
+  const checked: { where: string; body: AnyNode | null }[] = [];
+  for (const name of INIT_METHODS) {
+    checked.push({ where: name, body: classMethodBody(classBody, name) });
+  }
+  for (const member of members) {
+    if (member.type === 'PropertyDefinition' && member.value) {
+      checked.push({ where: 'a field initialiser', body: member.value as AnyNode });
+    }
+  }
+  return checked;
+}
+
 const rule: Rule.RuleModule = {
   meta: {
     type: 'problem',
@@ -228,20 +287,6 @@ const rule: Rule.RuleModule = {
     const options = (context.options[0] ?? {}) as { exemptMethods?: string[] };
     const exemptMethods = new Set(options.exemptMethods ?? []);
 
-    function classMethodBody(classBody: AnyNode, name: string): AnyNode | null {
-      const members = (classBody.body ?? []) as AnyNode[];
-      for (const member of members) {
-        if (member.type !== 'MethodDefinition') {
-          continue;
-        }
-        const key = member.key as unknown as { name?: string };
-        if (key?.name === name || (name === 'constructor' && member.kind === 'constructor')) {
-          return (member.value as AnyNode)?.body as AnyNode;
-        }
-      }
-      return null;
-    }
-
     function report(node: AnyNode, where: string, messageId: ComponentDataFetchMessageId): void {
       context.report({ node: node as Node, messageId, data: { where } });
     }
@@ -253,19 +298,8 @@ const rule: Rule.RuleModule = {
           return;
         }
         const classBody = cls.body as AnyNode;
-        const members = (classBody.body ?? []) as AnyNode[];
 
-        const checked: { where: string; body: AnyNode | null }[] = [];
-        for (const name of INIT_METHODS) {
-          checked.push({ where: name, body: classMethodBody(classBody, name) });
-        }
-        for (const member of members) {
-          if (member.type === 'PropertyDefinition' && member.value) {
-            checked.push({ where: 'a field initialiser', body: member.value as AnyNode });
-          }
-        }
-
-        for (const { where, body } of checked) {
+        for (const { where, body } of initPathBodies(classBody)) {
           if (!body) {
             continue;
           }
@@ -274,30 +308,8 @@ const rule: Rule.RuleModule = {
               report(inner, where, ComponentDataFetchMessageIds.initFetch);
             } else if (isPipelineKick(inner)) {
               report(inner, where, ComponentDataFetchMessageIds.initKick);
-            } else if (routeStreamSubscribe(inner)) {
-              let handlerLoads = false;
-              for (const arg of (inner.arguments as AnyNode[]) ?? []) {
-                walkIncludingClosures(arg, deep => {
-                  if (isEagerFetch(deep) || isPipelineKick(deep)) {
-                    handlerLoads = true;
-                    return;
-                  }
-                  if (deep.type === 'CallExpression') {
-                    const cal = deep.callee as AnyNode | undefined;
-                    if (cal?.type === 'MemberExpression'
-                      && (cal.object as AnyNode | undefined)?.type === 'ThisExpression') {
-                      const named = (cal.property as unknown as { name?: string })?.name;
-                      const target = named ? classMethodBody(classBody, named) : null;
-                      if (target && bodyFetches(target)) {
-                        handlerLoads = true;
-                      }
-                    }
-                  }
-                });
-              }
-              if (handlerLoads) {
-                report(inner, `${where} -> an ActivatedRoute stream`, ComponentDataFetchMessageIds.initFetch);
-              }
+            } else if (routeStreamSubscribe(inner) && routeStreamHandlerLoads(inner, classBody)) {
+              report(inner, `${where} -> an ActivatedRoute stream`, ComponentDataFetchMessageIds.initFetch);
             }
           });
 
@@ -305,8 +317,7 @@ const rule: Rule.RuleModule = {
             if (exemptMethods.has(name)) {
               continue;
             }
-            const target = classMethodBody(classBody, name);
-            if (target && bodyFetches(target)) {
+            if (bodyFetches(classMethodBody(classBody, name))) {
               report(body, `${where} -> ${name}()`, ComponentDataFetchMessageIds.initFetch);
             }
           }

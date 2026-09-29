@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -27,7 +28,7 @@ function everyColorPattern(): RegExp[] {
   return LITERAL_COLOR.map((pattern) => new RegExp(pattern.slice(1, -1)));
 }
 
-function aShippedUtilityPassesAndAMistypedOneFails(): void {
+test('a shipped utility passes and a mistyped one fails', () => {
   const shipped = newText();
   const mistyped = newText();
 
@@ -38,14 +39,14 @@ function aShippedUtilityPassesAndAMistypedOneFails(): void {
   );
 
   assert.deepEqual(result.failures.map((failure) => failure.split(':')[0]), [`.${mistyped}`]);
-}
+});
 
 function arbitraryCalcUtility(): { name: string; selector: string } {
   const name = `${newText()}-[calc(${newText()}_+_${newText()})]`;
   return { name, selector: `.${name.replace(/[[\]()+]/g, '\\$&')}` };
 }
 
-function aClassNameCarryingAnEscapedPlusIsReachedDirectly(): void {
+test('a class name carrying an escaped plus is reached directly', () => {
   const utility = arbitraryCalcUtility();
 
   const result = analyze(
@@ -55,9 +56,9 @@ function aClassNameCarryingAnEscapedPlusIsReachedDirectly(): void {
   );
 
   assert.deepEqual(result.failures, []);
-}
+});
 
-function aClassNameCarryingAnEscapedPlusUnderAnAncestorStillFails(): void {
+test('a class name carrying an escaped plus under an ancestor still fails', () => {
   const utility = arbitraryCalcUtility();
   const ancestor = newText();
 
@@ -68,9 +69,9 @@ function aClassNameCarryingAnEscapedPlusUnderAnAncestorStillFails(): void {
   );
 
   assert.deepEqual(result.failures.map((failure) => failure.split(':')[0]), [`.${utility.name}`]);
-}
+});
 
-function aHostClassLiteralIsReadLikeATemplateClass(): void {
+test('a host class literal is read like a template class', () => {
   const shipped = newText();
   const missing = newText();
 
@@ -81,17 +82,17 @@ function aHostClassLiteralIsReadLikeATemplateClass(): void {
   );
 
   assert.deepEqual(result.failures.map((failure) => failure.split(':')[0]), [`.${missing}`]);
-}
+});
 
-function aHostClassThatIsNotALiteralFails(): void {
+test('a host class that is not a literal fails', () => {
   const source = hostSource(`@Directive({ selector: '[crgCard]', host: { class: ${newText()} } })`);
 
   const result = analyze([], [], [source]);
 
   assert.deepEqual(result.failures.map((failure) => failure.split(':')[0]), [source.path]);
-}
+});
 
-function aHostClassBindingKeyCarryingAVariantIsRead(): void {
+test('a host class binding key carrying a variant is read', () => {
   const utility = `hover:${newText()}`;
 
   const reached = analyze(
@@ -103,9 +104,9 @@ function aHostClassBindingKeyCarryingAVariantIsRead(): void {
 
   assert.deepEqual(reached.failures, []);
   assert.deepEqual(unreached.failures.map((failure) => failure.split(': ')[0]), [`.${utility}`]);
-}
+});
 
-function aCompiledHostClassAttributeIsRead(): void {
+test('a compiled host class attribute is read', () => {
   const shipped = newText();
   const missing = newText();
 
@@ -120,7 +121,7 @@ function aCompiledHostClassAttributeIsRead(): void {
 
   assert.equal(result.failures.length, 1);
   assert.ok(result.failures[0].startsWith(`.${missing}: used 1 time(s)`), result.failures[0]);
-}
+});
 
 interface DirectiveFixture {
   readonly attribute: string;
@@ -151,7 +152,7 @@ function directiveFixture(): DirectiveFixture {
   };
 }
 
-function aPlainUtilityRivallingADirectivePropertyFails(): void {
+test('a plain utility rivalling a directive property fails', () => {
   const fixture = directiveFixture();
   const page = template(`<button ${fixture.attribute} class="${fixture.rival}"></button>`);
 
@@ -159,18 +160,18 @@ function aPlainUtilityRivallingADirectivePropertyFails(): void {
 
   assert.equal(result.failures.length, 1);
   assert.ok(result.failures[0].startsWith(`${page.path}:1: ${fixture.rival} sets background-color`), result.failures[0]);
-}
+});
 
-function aVariantOrAnUnrelatedUtilityBesideADirectivePasses(): void {
+test('a variant or an unrelated utility beside a directive passes', () => {
   const fixture = directiveFixture();
   const page = template(`<button ${fixture.attribute} class="hover:${fixture.rival} ${fixture.unrelated}"></button>`);
 
   const result = analyze([fixture.stylesheet], [page], [fixture.directive]);
 
   assert.deepEqual(result.failures, []);
-}
+});
 
-function aZIndexUtilityMustReadALadderToken(): void {
+test('a z-index utility must read a ladder token', () => {
   const rung = newText();
   const literalLayer = `z-${newCount()}`;
 
@@ -187,9 +188,9 @@ function aZIndexUtilityMustReadALadderToken(): void {
 
   assert.deepEqual(onLadder.failures, []);
   assert.deepEqual(offLadder.failures.map((failure) => failure.split(':')[0]), [`.${literalLayer}`]);
-}
+});
 
-function aThemeTokenNothingReadsIsReported(): void {
+test('a theme token nothing reads is reported', () => {
   const consumed = `--color-${newText()}`;
   const unconsumed = `--color-${newText()}`;
   const breakpoint = `--breakpoint-${newText()}`;
@@ -200,9 +201,9 @@ function aThemeTokenNothingReadsIsReported(): void {
   });
 
   assert.deepEqual(found, [unconsumed]);
-}
+});
 
-function aShadowTokenIsReadThroughTheUtilityTailwindInlinesItInto(): void {
+test('a shadow token is read through the utility Tailwind inlines it into', () => {
   const plain = `--shadow-${newText()}`;
   const mergedWithPlain = `--shadow-${newText()}`;
   const onHover = `--shadow-${newText()}`;
@@ -220,18 +221,18 @@ function aShadowTokenIsReadThroughTheUtilityTailwindInlinesItInto(): void {
   });
 
   assert.deepEqual(found, [unused]);
-}
+});
 
-function aLiteralColorIsBannedUnlessItReadsAToken(): void {
+test('a literal color is banned unless it reads a token', () => {
   const patterns = everyColorPattern();
   const literal = `oklch(0.${newCount()} 0 0)`;
   const mixedFromToken = `color-mix(in oklab, var(--color-${newText()}) 8%, transparent)`;
 
   assert.ok(patterns.some((pattern) => pattern.test(literal)), `${literal} passed the color ban`);
   assert.ok(!patterns.some((pattern) => pattern.test(mixedFromToken)), `${mixedFromToken} failed the color ban`);
-}
+});
 
-function aNamedColorIsBannedButTransparentAndATokenNamingOneAreNot(): void {
+test('a named color is banned but transparent and a token naming one are not', () => {
   const patterns = everyColorPattern();
   const namedColor = newMemberOf(CSS_NAMED_COLORS);
   const bordered = `${newCount()}px solid ${namedColor}`;
@@ -242,7 +243,7 @@ function aNamedColorIsBannedButTransparentAndATokenNamingOneAreNot(): void {
   assert.ok(patterns.some((pattern) => pattern.test(bordered)), `${bordered} passed the color ban`);
   assert.ok(!patterns.some((pattern) => pattern.test(transparentOutline)), `${transparentOutline} failed the color ban`);
   assert.ok(!patterns.some((pattern) => pattern.test(tokenNamingAColor)), `${tokenNamingAColor} failed the color ban`);
-}
+});
 
 type BuiltCss = (utility: string, token: string) => string;
 
@@ -260,25 +261,25 @@ function appWithSources(builtCss: BuiltCss | null): string {
   return repoRoot;
 }
 
-function aBuiltAppWhoseClassesAndTokensShipPasses(): void {
+test('a built app whose classes and tokens ship passes', () => {
   const repoRoot = appWithSources((utility, token) => `.${utility}{color:var(${token})}`);
 
   const check = checkDesignUtilities({ repoRoot });
 
   rmSync(repoRoot, { recursive: true, force: true });
   assert.ok(check.passed, String(check.report));
-}
+});
 
-function anAppWithNoBuildFailsRatherThanPassingVacuously(): void {
+test('an app with no build fails rather than passing vacuously', () => {
   const repoRoot = appWithSources(null);
 
   const check = checkDesignUtilities({ repoRoot });
 
   rmSync(repoRoot, { recursive: true, force: true });
   assert.equal(check.passed, false);
-}
+});
 
-function aBuildThatShipsNoStylesheetFails(): void {
+test('a build that ships no stylesheet fails', () => {
   const repoRoot = appWithSources(null);
   mkdirSync(join(repoRoot, BUILT_DIRECTORY));
 
@@ -286,23 +287,4 @@ function aBuildThatShipsNoStylesheetFails(): void {
 
   rmSync(repoRoot, { recursive: true, force: true });
   assert.equal(check.passed, false);
-}
-
-aShippedUtilityPassesAndAMistypedOneFails();
-aClassNameCarryingAnEscapedPlusIsReachedDirectly();
-aClassNameCarryingAnEscapedPlusUnderAnAncestorStillFails();
-aBuiltAppWhoseClassesAndTokensShipPasses();
-anAppWithNoBuildFailsRatherThanPassingVacuously();
-aBuildThatShipsNoStylesheetFails();
-aHostClassLiteralIsReadLikeATemplateClass();
-aHostClassThatIsNotALiteralFails();
-aHostClassBindingKeyCarryingAVariantIsRead();
-aCompiledHostClassAttributeIsRead();
-aPlainUtilityRivallingADirectivePropertyFails();
-aVariantOrAnUnrelatedUtilityBesideADirectivePasses();
-aZIndexUtilityMustReadALadderToken();
-aThemeTokenNothingReadsIsReported();
-aShadowTokenIsReadThroughTheUtilityTailwindInlinesItInto();
-aLiteralColorIsBannedUnlessItReadsAToken();
-aNamedColorIsBannedButTransparentAndATokenNamingOneAreNot();
-console.log('design-gates: every template and host class reaches shipped CSS, and every token is read');
+});

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { describe, it } from 'node:test';
 import { RuleTester } from 'eslint';
 import { RuleNames } from './index';
 import noClickNavigation, { ClickNavigationMessageIds } from './no-click-navigation';
@@ -15,11 +16,15 @@ const viewHandler = newHandlerName();
 const templateParser: unknown = require('@angular-eslint/template-parser');
 const tsParser: unknown = require('@typescript-eslint/parser');
 
+RuleTester.describe = describe;
+RuleTester.it = it;
+RuleTester.itOnly = it.only;
+
 const templateTester = new RuleTester({
   languageOptions: { parser: templateParser as never },
 });
 
-const tsTester = new RuleTester({
+const ruleTester = new RuleTester({
   languageOptions: { parser: tsParser as never, ecmaVersion: 2022, sourceType: 'module' },
 });
 
@@ -91,7 +96,7 @@ function component(body: string): string {
   return COMPONENT_HEADER + body + COMPONENT_FOOTER;
 }
 
-tsTester.run(RuleNames.noComponentNavigation, noComponentNavigation, {
+ruleTester.run(RuleNames.noComponentNavigation, noComponentNavigation, {
   valid: [
     {
       code: component('  save() {\n    this.api.save().subscribe(id => { void this.router.navigate(["/products", id]); });\n  }'),
@@ -136,7 +141,7 @@ tsTester.run(RuleNames.noComponentNavigation, noComponentNavigation, {
   ],
 });
 
-tsTester.run(RuleNames.noComponentDataFetch, noComponentDataFetch, {
+ruleTester.run(RuleNames.noComponentDataFetch, noComponentDataFetch, {
   valid: [
     {
       name: 'a subject chain is wiring, not fetching: nothing is requested until the subject emits',
@@ -227,5 +232,3 @@ tsTester.run(RuleNames.noComponentDataFetch, noComponentDataFetch, {
     },
   ],
 });
-
-process.stdout.write('eslint-angular: all rule fixtures passed\n');

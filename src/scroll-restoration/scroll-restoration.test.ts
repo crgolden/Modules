@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import {
   BEFORE_UNLOAD_EVENT,
   ScrollRestorationModes,
@@ -24,36 +25,36 @@ function aWindowTheRouterOwns(): FakeWindow {
   return fake;
 }
 
-function leavingTheDocumentHandsRestorationToTheBrowser(): void {
+test('leaving the document hands restoration to the browser', () => {
   const fake = aWindowTheRouterOwns();
 
   fake.leave();
 
   assert.equal(fake.history.scrollRestoration, ScrollRestorationModes.auto);
-}
+});
 
-function theRouterKeepsRestorationWhileTheDocumentIsAlive(): void {
+test('the router keeps restoration while the document is alive', () => {
   const fake = aWindowTheRouterOwns();
 
   assert.equal(fake.history.scrollRestoration, ScrollRestorationModes.manual);
-}
+});
 
-function theNextNavigationReclaimsRestorationAfterALeaveThatNeverLeft(): void {
+test('the next navigation reclaims restoration after a leave that never left', () => {
   const fake = aWindowTheRouterOwns();
   fake.leave();
 
   fake.navigate();
 
   assert.equal(fake.history.scrollRestoration, ScrollRestorationModes.manual);
-}
+});
 
-function thePublishedCoreIsCommonJsRatherThanAnEsModuleNodeHadToDetect(): void {
+test('the published core is CommonJS rather than an ES module Node had to detect', () => {
   const published: unknown = require('../../dist/scroll-restoration/index.js');
 
   assert.equal(Object.getPrototypeOf(published), Object.prototype);
-}
+});
 
-function aBundlerImportingTheCoreGetsAnEsModuleAndNodeRequiringItGetsCommonJs(): void {
+test('a bundler importing the core gets an ES module and Node requiring it gets CommonJS', () => {
   const manifest = require('../../package.json') as { exports: Record<string, Record<string, string>> };
   const entry = manifest.exports['./scroll-restoration'];
   const imported: unknown = require(`../../${entry['import']}`);
@@ -61,11 +62,4 @@ function aBundlerImportingTheCoreGetsAnEsModuleAndNodeRequiringItGetsCommonJs():
 
   assert.equal(Object.getPrototypeOf(imported), null);
   assert.equal(Object.getPrototypeOf(required), Object.prototype);
-}
-
-leavingTheDocumentHandsRestorationToTheBrowser();
-theRouterKeepsRestorationWhileTheDocumentIsAlive();
-theNextNavigationReclaimsRestorationAfterALeaveThatNeverLeft();
-thePublishedCoreIsCommonJsRatherThanAnEsModuleNodeHadToDetect();
-aBundlerImportingTheCoreGetsAnEsModuleAndNodeRequiringItGetsCommonJs();
-console.log('scroll-restoration: the browser restores across a document leave and the router reclaims on navigation');
+});

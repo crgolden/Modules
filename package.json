@@ -1,6 +1,6 @@
 {
   "name": "@crgolden/modules",
-  "version": "0.14.1",
+  "version": "0.14.2",
   "description": "Shared TypeScript modules for the crgolden fleet, published as one package with one subpath export per module.",
   "repository": {
     "type": "git",
@@ -19,15 +19,21 @@
   },
   "typesVersions": {
     "*": {
-      "*": ["dist/*/index.d.ts"]
+      "*": [
+        "dist/*/index.d.ts"
+      ]
     }
   },
   "files": [
     "dist"
   ],
+  "bin": {
+    "check-design-utilities": "dist/design-gates/cli.js"
+  },
   "scripts": {
+    "lint": "eslint .",
     "build": "ngc -p tsconfig.primitives.json && tsc -p tsconfig.json && tsc -p tsconfig.esm.json && node scripts/mark-esm-output.mjs",
-    "test": "tsc -p tsconfig.test.json && node dist-test/eslint-angular/rules.test.js && node dist-test/synthetic-walker/pick-from-prefix.test.js && node dist-test/synthetic-walker/credential-slot.test.js && node dist-test/synthetic-walker/walk-configuration.test.js && node dist-test/testing/testing.test.js && node dist-test/design-gates/design-gates.test.js && node dist-test/scroll-restoration/scroll-restoration.test.js && node dist-test/server-startup/server-startup.test.js",
+    "test": "tsc -p tsconfig.test.json && c8 --reporter=text-summary --reporter=lcovonly --reports-dir=coverage node --test dist-test/eslint-angular/rules.test.js dist-test/synthetic-walker/pick-from-prefix.test.js dist-test/synthetic-walker/credential-slot.test.js dist-test/synthetic-walker/walk-configuration.test.js dist-test/testing/testing.test.js dist-test/design-gates/design-gates.test.js dist-test/design-gates/cli.test.js dist-test/scroll-restoration/scroll-restoration.test.js dist-test/server-startup/server-startup.test.js",
     "enroll-passkey": "npm run build && node dist/synthetic-walker/enroll-passkey.js",
     "prepack": "npm run build"
   },
@@ -67,17 +73,22 @@
     }
   },
   "devDependencies": {
+    "@angular-eslint/template-parser": "^22.5.0",
     "@angular/common": "^22.1.5",
     "@angular/compiler": "^22.1.5",
     "@angular/compiler-cli": "^22.1.5",
     "@angular/core": "^22.1.5",
     "@angular/router": "^22.1.5",
-    "@angular-eslint/template-parser": "^22.5.0",
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.1",
     "@typescript-eslint/parser": "^8.70.0",
+    "c8": "^12.0.0",
     "eslint": "^10.8.1",
+    "eslint-plugin-import-x": "4.17.1",
+    "eslint-plugin-sonarjs": "4.2.2",
+    "eslint-plugin-unicorn": "76.0.0",
     "rxjs": "~7.8.2",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "typescript-eslint": "8.70.1"
   }
 }

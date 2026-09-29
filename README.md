@@ -1,3 +1,7 @@
+[![Publish](https://github.com/crgolden/Modules/actions/workflows/publish.yml/badge.svg)](https://github.com/crgolden/Modules/actions/workflows/publish.yml)
+
+[![Quality gate](https://sonarcloud.io/api/project_badges/quality_gate?project=crgolden_Modules)](https://sonarcloud.io/summary/new_code?id=crgolden_Modules)
+
 # Modules
 
 Shared TypeScript modules for the crgolden fleet, published together as one npm package,
@@ -22,7 +26,7 @@ import { walk } from '@crgolden/modules/synthetic-walker';
 | `server-startup` | `startOnceRetryingFailures`: the Node BFFs start their Express app once and share it, and a start that fails is forgotten so the next request retries rather than failing until a restart |
 | `scroll-restoration` | The framework-free half of that provider: the `history.scrollRestoration` modes, the `beforeunload` event name and the hand-back logic, importable from Node (a Playwright spec) without loading Angular; published as an ES module for bundlers and CommonJS for `require` |
 | `primitives` | Shared Angular directives (buttons, card, page container, page section) that style their host element with Tailwind utilities from the consuming app's `@theme` tokens; compiled by Angular's compiler in partial mode |
-| `design-gates` | The Angular apps' design checks: every template and host class must reach CSS the build ships (a mistyped Tailwind utility compiles to nothing), every z-index utility must read a `--z-*` token, every `@theme` token must be read, plus the shared stylelint config for what `@layer base` may say |
+| `design-gates` | The Angular apps' design checks: every template and host class must reach CSS the build ships (a mistyped Tailwind utility compiles to nothing), every z-index utility must read a `--z-*` token, every `@theme` token must be read, plus the shared stylelint config for what `@layer base` may say. The `check-design-utilities` command runs the check from an app's root |
 | `synthetic-walker` | Seeded random-walk engine for scheduled synthetic-user Playwright tests: a deterministic PRNG, a weighted action-graph walker, id-prefix locator helpers, and the marked synthetic login flow |
 | `testing` | The fleet's one TypeScript test-data generator, the counterpart of `Shared.Testing.Generated`: crypto-backed tokens, ids, counts, set members, addresses and instants, so no test spells a specimen value |
 

@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import { startOnceRetryingFailures } from './index';
 import { newCount, newText } from '../testing';
 
-async function aStartedServerIsReusedRatherThanStartedAgain(): Promise<void> {
+test('a started server is reused rather than started again', async () => {
   let starts = 0;
   const server = newText();
   const startApp = startOnceRetryingFailures(() => {
@@ -14,9 +15,9 @@ async function aStartedServerIsReusedRatherThanStartedAgain(): Promise<void> {
 
   assert.deepEqual(await Promise.all(callers), callers.map(() => server));
   assert.equal(starts, 1);
-}
+});
 
-async function aFailedStartIsForgottenSoTheNextCallerRetries(): Promise<void> {
+test('a failed start is forgotten so the next caller retries', async () => {
   const failure = new Error(newText());
   const server = newText();
   const outcomes = [() => Promise.reject(failure), () => Promise.resolve(server)];
@@ -31,14 +32,4 @@ async function aFailedStartIsForgottenSoTheNextCallerRetries(): Promise<void> {
   await assert.rejects(startApp(), failure);
 
   assert.equal(await startApp(), server);
-}
-
-aStartedServerIsReusedRatherThanStartedAgain()
-  .then(aFailedStartIsForgottenSoTheNextCallerRetries)
-  .then(() => {
-    console.log('server-startup: one start is shared, and a failed start is retried by the next caller');
-  })
-  .catch((error: unknown) => {
-    console.error(error);
-    process.exitCode = 1;
-  });
+});

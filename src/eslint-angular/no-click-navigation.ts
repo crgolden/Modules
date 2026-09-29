@@ -18,8 +18,8 @@ export const SUGGESTED_NAVIGATION_METHODS: readonly string[] = [
 ];
 
 const LINK_ATTRIBUTES: readonly string[] = ['href', 'routerLink'];
-const PLACEHOLDER_HREFS: readonly string[] = ['', '#', 'javascript:void(0)', 'javascript:;'];
-const ANCHOR_ELEMENTS: readonly string[] = ['a', 'area'];
+const PLACEHOLDER_HREFS: ReadonlySet<string> = new Set(['', '#', 'javascript:void(0)', 'javascript:;']);
+const ANCHOR_ELEMENTS: ReadonlySet<string> = new Set(['a', 'area']);
 
 interface TemplateAttribute {
   name: string;
@@ -52,8 +52,7 @@ export function handlerNameOf(bindingText: string): string | null {
   if (match === null) {
     return null;
   }
-  const path = match[1].split('.');
-  return path[path.length - 1];
+  return match[1].split('.').at(-1) ?? null;
 }
 
 function attributeNamed(element: TemplateElement, name: string): TemplateAttribute | undefined {
@@ -69,7 +68,7 @@ function isPlaceholderHref(element: TemplateElement): boolean {
   if (href === undefined || typeof href.value !== 'string') {
     return false;
   }
-  return PLACEHOLDER_HREFS.includes(href.value.trim());
+  return PLACEHOLDER_HREFS.has(href.value.trim());
 }
 
 const rule: Rule.RuleModule = {
@@ -127,7 +126,7 @@ const rule: Rule.RuleModule = {
           return;
         }
 
-        const isAnchor = ANCHOR_ELEMENTS.includes(element.name.toLowerCase());
+        const isAnchor = ANCHOR_ELEMENTS.has(element.name.toLowerCase());
 
         if (isAnchor && isPlaceholderHref(element)) {
           context.report({ loc, messageId: ClickNavigationMessageIds.placeholderHref, data: { element: element.name } });

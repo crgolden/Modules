@@ -17,17 +17,18 @@ export interface UtilitiesResult {
   readonly templateClassCount: number;
 }
 
-const RULE_BLOCK = /([^{}]+)\{([^{}]*)\}/g;
+const RULE_BLOCK = /(?<![^{}])([^{}]+)\{([^{}]*)\}/g;
 const CLASS_ATTRIBUTE = /\bclass\s*=\s*("[^"]*"|'[^']*')/g;
 const CLASS_BINDING = /\[class\.([a-z][a-z0-9-]*)\]/gi;
 const NG_CLASS_ATTRIBUTE = /\[ngClass\]\s*=\s*("[^"]*"|'[^']*')/g;
 const QUOTED_LITERAL = /'([^']*)'|"([^"]*)"/g;
 const UNANALYZABLE_CLASS_BINDING = /\[class\]\s*=/;
-const CLASS_TOKEN_NAME = /^(?:(?:[a-z][a-z0-9-]*|\[[^\]]*\]):)*[a-z][a-z0-9-]*(?:\[[^\]]*\]|\([^)]*\))?$/i;
+const CLASS_TOKEN_VARIANTS = /^(?:(?:[a-z][a-z0-9-]*|\[[^\]]*\]):)*/i;
+const CLASS_TOKEN_UTILITY = /^[a-z][a-z0-9-]*(?:\[[^\]]*\]|\([^)]*\))?$/i;
 const HOST_BLOCK = /\bhost\s*:\s*\{([^}]*)\}/g;
 const HOST_CLASS_KEY = /(?:^|[\s,{])(?:class|'class')\s*:/;
 const HOST_CLASS_LITERAL = /(?:^|[\s,{])(?:class|'class')\s*:\s*'([^']*)'/;
-const HOST_CLASS_BINDING_KEY = /'\[class\.([^'\]]+(?:\[[^\]']*\][^'\]]*)*)\]'/gi;
+const HOST_CLASS_BINDING_KEY = /'\[class\.([^'\]](?:[^'[\]]*\[[^'\]]*\])*[^'[\]]*(?:\[[^'\]]*)?)\]'/gi;
 const COMPILED_CLASS_ATTRIBUTE = /\bclassAttribute\s*:\s*"([^"]*)"/g;
 const COMPILED_CLASS_ATTRIBUTE_ONCE = /\bclassAttribute\s*:\s*"([^"]*)"/;
 const COMPILED_SUFFIX = '.js';
@@ -40,11 +41,19 @@ const VARIANT_SEPARATOR = ':';
 const Z_INDEX_UTILITY = /^-?z-/;
 const LADDER_Z_INDEX = /(?:^|;)\s*z-index\s*:\s*var\(\s*--z-/;
 
-const escapeForRegExp = (className: string): string => className.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeForRegExp = (className: string): string => className.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 
-export const withoutComments = (css: string): string => css.replace(/\/\*[\s\S]*?\*\//g, '');
+const compareOrdinal = (left: string, right: string): number => {
+  if (left < right) return -1;
+  return left > right ? 1 : 0;
+};
 
-export const withoutSelectorEscapes = (css: string): string => css.replace(/\\([^a-zA-Z0-9])/g, '$1');
+const isClassTokenName = (token: string): boolean =>
+  CLASS_TOKEN_UTILITY.test(token.replace(CLASS_TOKEN_VARIANTS, ''));
+
+export const withoutComments = (css: string): string => css.replaceAll(/\/\*[\s\S]*?\*\//g, '');
+
+export const withoutSelectorEscapes = (css: string): string => css.replaceAll(/\\([^a-zA-Z0-9])/g, '$1');
 
 const mentionOf = (className: string): RegExp => new RegExp(`${escapeForRegExp(className)}(?![a-z0-9-])`, 'i');
 
@@ -68,7 +77,7 @@ export function splitSelectorList(selector: string): string[] {
 function selectorsMentioning(css: string, className: string): string[] {
   const mentions = mentionOf(className);
   return [...css.matchAll(RULE_BLOCK)]
-    .map(([, selector]) => selector.trim().replace(/\s+/g, ' '))
+    .map(([, selector]) => selector.trim().replaceAll(/\s+/g, ' '))
     .filter((selector) => mentions.test(selector));
 }
 
@@ -87,7 +96,7 @@ function selectorPartsFor(css: string, className: string): { parts: string[]; un
 
 function countTokens(used: Map<string, number>, value: string): void {
   for (const token of value.split(/\s+/)) {
-    if (CLASS_TOKEN_NAME.test(token)) used.set(`.${token}`, (used.get(`.${token}`) ?? 0) + 1);
+    if (isClassTokenName(token)) used.set(`.${token}`, (used.get(`.${token}`) ?? 0) + 1);
   }
 }
 
@@ -168,12 +177,12 @@ function offLadderFailures(usedClasses: Map<string, number>, stylesheets: readon
         [...css.matchAll(RULE_BLOCK)].some(([, selector, body]) => mentions.test(selector) && LADDER_Z_INDEX.test(body)),
       );
     })
-    .sort()
+    .sort(compareOrdinal)
     .map((className) => `${className}: a z-index utility that does not read a --z-* token from @theme.`);
 }
 
 function plainTokens(classList: string): string[] {
-  return classList.split(/\s+/).filter((token) => CLASS_TOKEN_NAME.test(token) && !token.includes(VARIANT_SEPARATOR));
+  return classList.split(/\s+/).filter((token) => isClassTokenName(token) && !token.includes(VARIANT_SEPARATOR));
 }
 
 function directiveHostTokens(hostSources: readonly SourceFile[]): Map<string, string[]> {
@@ -203,33 +212,45 @@ function propertiesSetBy(stylesheets: readonly string[], cache: Map<string, Set<
   return properties;
 }
 
+function tagConflicts(
+  template: SourceFile,
+  tag: RegExpMatchArray,
+  hostTokens: Map<string, string[]>,
+  stylesheets: readonly string[],
+  cache: Map<string, Set<string>>,
+): string[] {
+  const attributes = tag[1];
+  const classMatch = STATIC_CLASS_ATTRIBUTE.exec(attributes);
+  const classList = classMatch?.[1] ?? classMatch?.[2];
+  if (classList === undefined) return [];
+  const directives = [...hostTokens.keys()].filter((attribute) =>
+    new RegExp(String.raw`(?:^|[\s\[])${escapeForRegExp(attribute)}(?![\w-])`).test(attributes),
+  );
+  if (directives.length === 0) return [];
+  const line = template.text.slice(0, tag.index ?? 0).split('\n').length;
+  const failures: string[] = [];
+  for (const directive of directives) {
+    const owned = new Set((hostTokens.get(directive) ?? []).flatMap((token) => [...propertiesSetBy(stylesheets, cache, token)]));
+    for (const token of plainTokens(classList)) {
+      const clash = [...propertiesSetBy(stylesheets, cache, token)].filter((property) => owned.has(property));
+      if (clash.length > 0) {
+        failures.push(
+          `${template.path}:${line}: ${token} sets ${clash.join(', ')}, which ${directive} already sets; ` +
+            'the winner would be decided by stylesheet order. Use a variant, another directive, or no utility.',
+        );
+      }
+    }
+  }
+  return failures;
+}
+
 function directiveConflicts(templates: readonly SourceFile[], hostSources: readonly SourceFile[], stylesheets: readonly string[]): string[] {
   const hostTokens = directiveHostTokens(hostSources);
   const cache = new Map<string, Set<string>>();
   const failures: string[] = [];
   for (const template of templates) {
     for (const tag of template.text.matchAll(OPENING_TAG)) {
-      const attributes = tag[1];
-      const classMatch = STATIC_CLASS_ATTRIBUTE.exec(attributes);
-      const classList = classMatch?.[1] ?? classMatch?.[2];
-      if (classList === undefined) continue;
-      const directives = [...hostTokens.keys()].filter((attribute) =>
-        new RegExp(`(?:^|[\\s\\[])${escapeForRegExp(attribute)}(?![\\w-])`).test(attributes),
-      );
-      if (directives.length === 0) continue;
-      const line = template.text.slice(0, tag.index ?? 0).split('\n').length;
-      for (const directive of directives) {
-        const owned = new Set((hostTokens.get(directive) ?? []).flatMap((token) => [...propertiesSetBy(stylesheets, cache, token)]));
-        for (const token of plainTokens(classList)) {
-          const clash = [...propertiesSetBy(stylesheets, cache, token)].filter((property) => owned.has(property));
-          if (clash.length > 0) {
-            failures.push(
-              `${template.path}:${line}: ${token} sets ${clash.join(', ')}, which ${directive} already sets; ` +
-                'the winner would be decided by stylesheet order. Use a variant, another directive, or no utility.',
-            );
-          }
-        }
-      }
+      failures.push(...tagConflicts(template, tag, hostTokens, stylesheets, cache));
     }
   }
   return failures;

@@ -26,19 +26,19 @@ const COLOR_PROPERTIES = [
 ] as const;
 
 export const LITERAL_COLOR = [
-  '/#[0-9a-fA-F]{3,8}\\b/',
-  '/^(?!.*var\\().*\\b(?:rgba?|hsla?|oklch|oklab|lab|lch|color-mix)\\(/',
-  `/(?<![\\w-])(?:${CSS_NAMED_COLORS.join('|')})(?![\\w-])/`,
+  String.raw`/#[0-9a-fA-F]{3,8}\b/`,
+  String.raw`/^(?!.*var\().*\b(?:rgba?|hsla?|oklch|oklab|lab|lch|color-mix)\(/`,
+  String.raw`/(?<![\w-])(?:${CSS_NAMED_COLORS.join('|')})(?![\w-])/`,
 ];
 
 const TOKEN_ONLY_VALUES: Readonly<Record<string, readonly string[]>> = {
-  'font-size': ['/^var\\(--text-/', 'inherit'],
-  'font-weight': ['/^var\\(--font-weight-/', 'inherit'],
-  'letter-spacing': ['/^var\\(--tracking-/', 'normal', 'inherit'],
-  'font-family': ['/^var\\(--font-/', 'inherit'],
-  'line-height': ['/^var\\(--leading-/', '/^\\d+(?:\\.\\d+)?$/', 'inherit'],
-  'box-shadow': ['/^var\\(--shadow-/', 'none'],
-  'z-index': ['/^var\\(--z-/', 'auto', '0'],
+  'font-size': [String.raw`/^var\(--text-/`, 'inherit'],
+  'font-weight': [String.raw`/^var\(--font-weight-/`, 'inherit'],
+  'letter-spacing': [String.raw`/^var\(--tracking-/`, 'normal', 'inherit'],
+  'font-family': [String.raw`/^var\(--font-/`, 'inherit'],
+  'line-height': [String.raw`/^var\(--leading-/`, String.raw`/^\d+(?:\.\d+)?$/`, 'inherit'],
+  'box-shadow': [String.raw`/^var\(--shadow-/`, 'none'],
+  'z-index': [String.raw`/^var\(--z-/`, 'auto', '0'],
 };
 
 export const designStylelintConfig = {

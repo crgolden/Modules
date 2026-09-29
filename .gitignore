@@ -84,6 +84,9 @@ dist
 dist-test
 .output
 
+# SonarScanner working directory
+.scannerwork/
+
 # Gatsby files
 .cache/
 # Comment in the public line in if your project uses Gatsby and not Next.js

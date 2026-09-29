@@ -7,8 +7,8 @@ export const ComponentNavigationMessageIds = {
 
 export const REDIRECT_CALLBACKS: readonly string[] = ['subscribe', 'then', 'catch', 'finally'];
 
-const NAVIGATION_CALLS: readonly string[] = ['navigate', 'navigateByUrl'];
-const LOCATION_OBJECTS: readonly string[] = ['location', 'window', 'globalThis', 'document'];
+const NAVIGATION_CALLS: ReadonlySet<string> = new Set(['navigate', 'navigateByUrl']);
+const LOCATION_OBJECTS: ReadonlySet<string> = new Set(['location', 'window', 'globalThis', 'document']);
 
 type WalkableNode = Node & { parent?: WalkableNode | null };
 
@@ -69,7 +69,7 @@ function isRouterNavigation(node: { callee?: unknown }): boolean {
   if (callee?.type !== 'MemberExpression' || typeof callee.property?.name !== 'string') {
     return false;
   }
-  if (!NAVIGATION_CALLS.includes(callee.property.name)) {
+  if (!NAVIGATION_CALLS.has(callee.property.name)) {
     return false;
   }
   const objectName = callee.object?.property?.name ?? callee.object?.name;
@@ -90,7 +90,7 @@ function isLocationAssignment(node: { left?: unknown }): boolean {
   if (object?.property?.name === 'location') {
     return true;
   }
-  return typeof object?.name === 'string' && LOCATION_OBJECTS.includes(object.name);
+  return typeof object?.name === 'string' && LOCATION_OBJECTS.has(object.name);
 }
 
 const rule: Rule.RuleModule = {

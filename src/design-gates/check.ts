@@ -47,7 +47,7 @@ export function checkDesignUtilities(options: DesignUtilitiesCheckOptions): Desi
     return failed([...report, `FAIL: ${failures.length} design failure(s).`, ...failures.map((failure) => `  ${failure}`)]);
   }
   const unconsumed = unconsumedThemeTokens({
-    themeCss: readFileSync(join(sourceRoot, THEME_STYLESHEET), 'utf8').replace(/\r\n/g, '\n'),
+    themeCss: readFileSync(join(sourceRoot, THEME_STYLESHEET), 'utf8').replaceAll('\r\n', '\n'),
     stylesheets: builtStylesheets.map(({ text }) => text),
   });
   if (unconsumed.length > 0) {

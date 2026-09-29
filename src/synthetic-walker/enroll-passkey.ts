@@ -63,12 +63,12 @@ function readSessionCookies(origin: string): SessionCookie[] | null {
   if (text.startsWith('[')) {
     const parsed: unknown = JSON.parse(text);
     if (!Array.isArray(parsed)) {
-      throw new Error(`ENROLL_SESSION_COOKIE_FILE '${cookieFile}' must hold a JSON array of {name, value}.`);
+      throw new TypeError(`ENROLL_SESSION_COOKIE_FILE '${cookieFile}' must hold a JSON array of {name, value}.`);
     }
     return parsed.map(entry => {
       const { name, value } = entry as { name?: unknown; value?: unknown };
       if (typeof name !== 'string' || typeof value !== 'string') {
-        throw new Error('Every cookie in the file needs a string name and a string value.');
+        throw new TypeError('Every cookie in the file needs a string name and a string value.');
       }
       return { ...shared, name, value };
     });
