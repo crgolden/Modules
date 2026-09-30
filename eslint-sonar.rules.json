@@ -2,7 +2,9 @@
   "blocks": [
     {
       "files": [
-        "**/*.ts"
+        "**/*.ts",
+        "**/*.mts",
+        "**/*.cts"
       ],
       "ignores": [
         "**/node_modules/**",
