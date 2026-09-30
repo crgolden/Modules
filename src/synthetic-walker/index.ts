@@ -321,25 +321,44 @@ function pickWeighted(rng: Rng, actions: readonly WalkerAction[]): WalkerAction 
   return lastAction;
 }
 
+async function takeStep(page: Page, actions: readonly WalkerAction[], rng: Rng, seed: number, stepIndex: number, steps: number): Promise<void> {
+  await waitForAngularHydration(page);
+  const availability = await Promise.all(actions.map(action => action.available(page)));
+  const availableActions = actions.filter((_, index) => availability[index]);
+  if (availableActions.length === 0) {
+    throw new Error(`seed=${seed} step=${stepIndex}: no action is available at ${page.url()}; every walker needs at least one always-available action.`);
+  }
+  const action = pickWeighted(rng, availableActions);
+  try {
+    await test.step(`${stepIndex}/${steps}: ${action.name} [seed=${seed}] url=${page.url()}`, () => action.run(page, rng));
+  } catch (cause) {
+    throw new Error(`seed=${seed} step=${stepIndex} action=${action.name}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+  }
+}
+
+function walkSteps(page: Page, actions: readonly WalkerAction[], seed: number, steps: number): AsyncIterable<number> {
+  const rng = createRng(seed);
+  let stepIndex = 0;
+  return {
+    [Symbol.asyncIterator]: () => ({
+      next: async (): Promise<IteratorResult<number, undefined>> => {
+        if (stepIndex >= steps) {
+          return { done: true, value: undefined };
+        }
+        stepIndex += 1;
+        await takeStep(page, actions, rng, seed, stepIndex, steps);
+        return { done: false, value: stepIndex };
+      },
+    }),
+  };
+}
+
 export async function walk(page: Page, actions: readonly WalkerAction[], options: WalkOptions): Promise<WalkResult> {
   const { seed, steps, testInfo } = options;
-  const rng = createRng(seed);
   testInfo.annotations.push({ type: SEED_ANNOTATION_TYPE, description: String(seed) });
   let executedSteps = 0;
-  for (let stepIndex = 1; stepIndex <= steps; stepIndex += 1) {
-    await waitForAngularHydration(page);
-    const availability = await Promise.all(actions.map(action => action.available(page)));
-    const availableActions = actions.filter((_, index) => availability[index]);
-    if (availableActions.length === 0) {
-      throw new Error(`seed=${seed} step=${stepIndex}: no action is available at ${page.url()}; every walker needs at least one always-available action.`);
-    }
-    const action = pickWeighted(rng, availableActions);
-    try {
-      await test.step(`${stepIndex}/${steps}: ${action.name} [seed=${seed}] url=${page.url()}`, () => action.run(page, rng));
-    } catch (cause) {
-      throw new Error(`seed=${seed} step=${stepIndex} action=${action.name}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
-    }
-    executedSteps += 1;
+  for await (const completedStep of walkSteps(page, actions, seed, steps)) {
+    executedSteps = completedStep;
   }
   return { executedSteps };
 }
