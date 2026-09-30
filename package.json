@@ -1,6 +1,6 @@
 {
   "name": "@crgolden/modules",
-  "version": "0.14.3",
+  "version": "0.15.0",
   "description": "Shared TypeScript modules for the crgolden fleet, published as one package with one subpath export per module.",
   "repository": {
     "type": "git",
@@ -28,12 +28,13 @@
     "dist"
   ],
   "bin": {
-    "check-design-utilities": "dist/design-gates/cli.js"
+    "check-design-utilities": "dist/design-gates/cli.js",
+    "publish-bdd-results": "dist/bdd-results/cli.js"
   },
   "scripts": {
     "lint": "eslint .",
     "build": "ngc -p tsconfig.primitives.json && tsc -p tsconfig.json && tsc -p tsconfig.esm.json && node scripts/mark-esm-output.mjs",
-    "test": "tsc -p tsconfig.test.json && c8 --reporter=text-summary --reporter=lcovonly --reports-dir=coverage node --test dist-test/eslint-angular/rules.test.js dist-test/synthetic-walker/pick-from-prefix.test.js dist-test/synthetic-walker/credential-slot.test.js dist-test/synthetic-walker/walk-configuration.test.js dist-test/testing/testing.test.js dist-test/design-gates/design-gates.test.js dist-test/design-gates/cli.test.js dist-test/scroll-restoration/scroll-restoration.test.js dist-test/server-startup/server-startup.test.js",
+    "test": "tsc -p tsconfig.test.json && c8 --reporter=text-summary --reporter=lcovonly --reports-dir=coverage node --test dist-test/eslint-angular/rules.test.js dist-test/synthetic-walker/pick-from-prefix.test.js dist-test/synthetic-walker/credential-slot.test.js dist-test/synthetic-walker/walk-configuration.test.js dist-test/testing/testing.test.js dist-test/design-gates/design-gates.test.js dist-test/design-gates/cli.test.js dist-test/scroll-restoration/scroll-restoration.test.js dist-test/server-startup/server-startup.test.js dist-test/bdd-results/bdd-results.test.js dist-test/bdd-results/publish.test.js dist-test/bdd-results/recorded-messages.test.js",
     "enroll-passkey": "npm run build && node dist/synthetic-walker/enroll-passkey.js",
     "prepack": "npm run build"
   },
@@ -81,6 +82,7 @@
     "@angular/router": "^22.1.5",
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.3",
+    "@types/pg": "^8.23.1",
     "@typescript-eslint/parser": "^8.70.0",
     "c8": "^12.0.0",
     "eslint": "^10.11.0",
@@ -90,5 +92,8 @@
     "rxjs": "~7.8.2",
     "typescript": "~6.0.3",
     "typescript-eslint": "8.70.1"
+  },
+  "dependencies": {
+    "pg": "^8.23.0"
   }
 }
