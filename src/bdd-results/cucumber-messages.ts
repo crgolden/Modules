@@ -99,6 +99,18 @@ export interface TestRunStarted {
   readonly timestamp: Timestamp;
 }
 
+export interface Exception {
+  readonly type: string;
+  readonly message?: string;
+}
+
+export interface TestRunFinished {
+  readonly success: boolean;
+  readonly timestamp: Timestamp;
+  readonly message?: string;
+  readonly exception?: Exception;
+}
+
 export interface TestStepFinished {
   readonly testCaseStartedId: string;
   readonly testStepId: string;
@@ -118,4 +130,5 @@ export interface Envelope {
   readonly testCaseStarted?: TestCaseStarted;
   readonly testStepFinished?: TestStepFinished;
   readonly testCaseFinished?: TestCaseFinished;
+  readonly testRunFinished?: TestRunFinished;
 }

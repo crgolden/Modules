@@ -1,4 +1,4 @@
-import type { ScenarioResult } from './scenario-results';
+import type { RunOutcome, ScenarioResult } from './scenario-results';
 
 export const RUN_ENVIRONMENT_KEYS = {
   runId: 'GITHUB_RUN_ID',
@@ -40,7 +40,7 @@ export class MissingRunSettingError extends Error {
 
 export class NothingExecutedError extends Error {
   constructor() {
-    super('The Cucumber messages hold no finished scenario, so there is no result to publish.');
+    super('The run reports success with no finished scenario, so there is no result to publish.');
   }
 }
 
@@ -75,7 +75,19 @@ export function runIdentityFromEnvironment(app: string, environment: NodeJS.Proc
   };
 }
 
-const RUN_COLUMNS = ['app', 'run_id', 'run_attempt', 'run_url', 'git_sha', 'git_ref', 'event', 'started_at'];
+const RUN_COLUMNS = [
+  'app',
+  'run_id',
+  'run_attempt',
+  'run_url',
+  'git_sha',
+  'git_ref',
+  'event',
+  'started_at',
+  'finished_at',
+  'success',
+  'error_message',
+];
 
 const SCENARIO_COLUMNS = [
   'app',
@@ -132,21 +144,33 @@ export async function publishScenarioResults(
   client: Queryable,
   run: RunIdentity,
   runStartedAt: Date,
+  outcome: RunOutcome,
   results: readonly ScenarioResult[],
 ): Promise<void> {
-  if (results.length === 0) {
+  if (results.length === 0 && outcome.success) {
     throw new NothingExecutedError();
   }
   await client.query(SqlCommands.begin);
   try {
-    await client.query(
-      `INSERT INTO runs (${RUN_COLUMNS.join(', ')}) VALUES ${placeholders(1, RUN_COLUMNS.length)}`,
-      [run.app, run.runId, run.runAttempt, run.runUrl, run.gitSha, run.gitRef, run.event, runStartedAt],
-    );
-    await client.query(
-      `INSERT INTO scenario_results (${SCENARIO_COLUMNS.join(', ')}) VALUES ${placeholders(results.length, SCENARIO_COLUMNS.length)}`,
-      results.flatMap((result) => scenarioRow(run, result)),
-    );
+    await client.query(`INSERT INTO runs (${RUN_COLUMNS.join(', ')}) VALUES ${placeholders(1, RUN_COLUMNS.length)}`, [
+      run.app,
+      run.runId,
+      run.runAttempt,
+      run.runUrl,
+      run.gitSha,
+      run.gitRef,
+      run.event,
+      runStartedAt,
+      outcome.finishedAt,
+      outcome.success,
+      outcome.errorMessage,
+    ]);
+    if (results.length > 0) {
+      await client.query(
+        `INSERT INTO scenario_results (${SCENARIO_COLUMNS.join(', ')}) VALUES ${placeholders(results.length, SCENARIO_COLUMNS.length)}`,
+        results.flatMap((result) => scenarioRow(run, result)),
+      );
+    }
     await client.query(SqlCommands.commit);
   } catch (error) {
     await client.query(SqlCommands.rollback);

@@ -5,7 +5,7 @@ import { sep } from 'node:path';
 import { parseArgs } from 'node:util';
 import { Client } from 'pg';
 import { publishScenarioResults, runIdentityFromEnvironment } from './publish';
-import { parseEnvelopes, runStartedAt, toScenarioResults } from './scenario-results';
+import { parseEnvelopes, runOutcome, runStartedAt, toScenarioResults, type RunOutcome } from './scenario-results';
 
 export const COMMAND_ENTRY_POINT = __filename;
 export const APP_OPTION = 'app';
@@ -26,6 +26,19 @@ export function messagesFileWithin(workingDirectory: string, messagesPath: strin
     throw new OutsideWorkingDirectoryError(messagesPath);
   }
   return resolved;
+}
+
+export const RunOutcomeDescriptions = {
+  unfinished: 'The run did not finish.',
+  succeeded: 'The run succeeded.',
+  failed: 'The run did not succeed.',
+} as const;
+
+export function describeOutcome(outcome: RunOutcome): string {
+  if (outcome.finishedAt === null) {
+    return RunOutcomeDescriptions.unfinished;
+  }
+  return outcome.success ? RunOutcomeDescriptions.succeeded : RunOutcomeDescriptions.failed;
 }
 
 export interface PublishCommand {
@@ -52,14 +65,17 @@ export async function runPublishCommand(args: readonly string[], environment: No
   const run = runIdentityFromEnvironment(command.app, environment);
   const envelopes = parseEnvelopes(await readFile(messagesFileWithin(process.cwd(), command.messagesPath), MESSAGES_ENCODING));
   const results = toScenarioResults(envelopes);
+  const outcome = runOutcome(envelopes);
   const client = new Client();
   await client.connect();
   try {
-    await publishScenarioResults(client, run, runStartedAt(envelopes), results);
+    await publishScenarioResults(client, run, runStartedAt(envelopes), outcome, results);
   } finally {
     await client.end();
   }
-  process.stdout.write(`Published ${results.length} scenario results for ${run.app} run ${run.runId}.${run.runAttempt}.\n`);
+  process.stdout.write(
+    `Published ${results.length} scenario results for ${run.app} run ${run.runId}.${run.runAttempt}. ${describeOutcome(outcome)}\n`,
+  );
   return 0;
 }
 

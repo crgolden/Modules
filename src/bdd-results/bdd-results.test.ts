@@ -4,7 +4,9 @@ import {
   MalformedMessagesError,
   TEST_STEP_RESULT_STATUSES,
   TestStepResultStatuses,
+  UNFINISHED_RUN,
   parseEnvelopes,
+  runOutcome,
   runStartedAt,
   toInstant,
   toScenarioResults,
@@ -216,4 +218,76 @@ test('blank lines between envelopes are ignored', () => {
   const ndjson = run.envelopes.map((envelope) => `${JSON.stringify(envelope)}\n\n`).join('');
 
   assert.deepEqual(parseEnvelopes(ndjson), run.envelopes);
+});
+
+function cutOff(envelope: Envelope): string {
+  const text = JSON.stringify(envelope);
+  return text.slice(0, randomIntBetween(1, text.length - 1));
+}
+
+function linesOf(envelopes: readonly Envelope[]): string {
+  return envelopes.map((envelope) => `${JSON.stringify(envelope)}\n`).join('');
+}
+
+test('a final line cut off mid-write, with no line break after it, is dropped and the lines before it kept', () => {
+  const run = recordRun([scenarioStep(TestStepResultStatuses.passed)], null);
+  const kept = run.envelopes.slice(0, -1);
+  const cut = run.envelopes[kept.length];
+
+  assert.deepEqual(parseEnvelopes(`${linesOf(kept)}${cutOff(cut)}`), kept);
+});
+
+test('a final line with no line break after it is kept when it is whole', () => {
+  const run = recordRun([scenarioStep(TestStepResultStatuses.passed)], null);
+
+  assert.deepEqual(parseEnvelopes(linesOf(run.envelopes).trimEnd()), run.envelopes);
+});
+
+test('a line that is not JSON before the last one is corruption, not a cut, and fails closed', () => {
+  const run = recordRun([scenarioStep(TestStepResultStatuses.passed)], null);
+  const [first, ...rest] = run.envelopes;
+
+  assert.throws(() => parseEnvelopes(`${cutOff(first)}\n${linesOf(rest)}`), MalformedMessagesError);
+});
+
+test('a final line that is not JSON but ends in a line break was written whole, so it fails closed', () => {
+  const run = recordRun([scenarioStep(TestStepResultStatuses.passed)], null);
+  const kept = run.envelopes.slice(0, -1);
+  const cut = run.envelopes[kept.length];
+
+  assert.throws(() => parseEnvelopes(`${linesOf(kept)}${cutOff(cut)}\n`), MalformedMessagesError);
+});
+
+test('a run that finished carries its finish time, its success and the exception message', () => {
+  const run = recordRun([scenarioStep(TestStepResultStatuses.passed)], null);
+  const finished = newTimestamp();
+  const exceptionMessage = newText();
+
+  const outcome = runOutcome([
+    ...run.envelopes,
+    { testRunFinished: { success: false, timestamp: finished, exception: { type: newText(), message: exceptionMessage } } },
+  ]);
+
+  assert.deepEqual(outcome, { finishedAt: toInstant(finished), success: false, errorMessage: exceptionMessage });
+});
+
+test('a run that finished with no exception falls back to the testRunFinished message', () => {
+  const message = newText();
+
+  const outcome = runOutcome([{ testRunFinished: { success: false, timestamp: newTimestamp(), message } }]);
+
+  assert.equal(outcome.errorMessage, message);
+});
+
+test('a run that succeeded with nothing to say carries no error message', () => {
+  const outcome = runOutcome([{ testRunFinished: { success: true, timestamp: newTimestamp() } }]);
+
+  assert.equal(outcome.success, true);
+  assert.equal(outcome.errorMessage, null);
+});
+
+test('messages with no testRunFinished describe a run that did not finish, whatever its scenarios did', () => {
+  const run = recordRun([scenarioStep(TestStepResultStatuses.passed)], null);
+
+  assert.deepEqual(runOutcome(run.envelopes), UNFINISHED_RUN);
 });

@@ -4,9 +4,7 @@ import { CREDENTIAL_SLOTS, toCredentialSlot } from './index';
 import { newCount } from '../testing';
 
 test('every declared slot is accepted', () => {
-  for (const slot of CREDENTIAL_SLOTS) {
-    assert.equal(toCredentialSlot(slot), slot);
-  }
+  assert.deepEqual(CREDENTIAL_SLOTS.map(toCredentialSlot), [...CREDENTIAL_SLOTS]);
 });
 
 test('a slot no secret backs is refused', () => {

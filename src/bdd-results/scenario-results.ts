@@ -38,13 +38,52 @@ interface ScenarioPlacement {
   readonly rule: string | null;
 }
 
+export interface RunOutcome {
+  readonly finishedAt: Date | null;
+  readonly success: boolean;
+  readonly errorMessage: string | null;
+}
+
+export const UNFINISHED_RUN: RunOutcome = { finishedAt: null, success: false, errorMessage: null };
+
+const LINE_BREAK = '\n';
+
 export class MalformedMessagesError extends Error {}
 
+interface MessagesLine {
+  readonly text: string;
+  readonly number: number;
+}
+
+function parseLine(line: MessagesLine): Envelope {
+  try {
+    return JSON.parse(line.text) as Envelope;
+  } catch (error) {
+    throw new MalformedMessagesError(`Line ${line.number} of the Cucumber messages is not JSON: ${String(error)}`);
+  }
+}
+
+function parseCutOffLine(line: MessagesLine): Envelope[] {
+  try {
+    return [JSON.parse(line.text) as Envelope];
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return [];
+    }
+    throw error;
+  }
+}
+
 export function parseEnvelopes(ndjson: string): Envelope[] {
-  return ndjson
-    .split('\n')
-    .filter((line) => line.trim().length > 0)
-    .map((line) => JSON.parse(line) as Envelope);
+  const lines = ndjson
+    .split(LINE_BREAK)
+    .map((text, index) => ({ text, number: index + 1 }))
+    .filter((line) => line.text.trim().length > 0);
+  const last = lines.at(-1);
+  if (last === undefined || ndjson.endsWith(LINE_BREAK)) {
+    return lines.map(parseLine);
+  }
+  return [...lines.slice(0, -1).map(parseLine), ...parseCutOffLine(last)];
 }
 
 export function worstStatus(statuses: readonly TestStepResultStatus[]): TestStepResultStatus {
@@ -124,6 +163,18 @@ export function runStartedAt(envelopes: readonly Envelope[]): Date {
     throw new MalformedMessagesError('No testRunStarted in the Cucumber messages, so the run has no start time.');
   }
   return toInstant(started.timestamp);
+}
+
+export function runOutcome(envelopes: readonly Envelope[]): RunOutcome {
+  const finished = envelopes.find((envelope) => envelope.testRunFinished !== undefined)?.testRunFinished;
+  if (finished === undefined) {
+    return UNFINISHED_RUN;
+  }
+  return {
+    finishedAt: toInstant(finished.timestamp),
+    success: finished.success,
+    errorMessage: nonBlankOrNull(finished.exception?.message) ?? nonBlankOrNull(finished.message),
+  };
 }
 
 export function toScenarioResults(envelopes: readonly Envelope[]): ScenarioResult[] {

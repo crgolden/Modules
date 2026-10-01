@@ -9,13 +9,23 @@ import {
   RUN_ENVIRONMENT_KEYS,
   SqlCommands,
   TestStepResultStatuses,
+  UNFINISHED_RUN,
   publishScenarioResults,
   runIdentityFromEnvironment,
   type Queryable,
   type RunIdentity,
+  type RunOutcome,
   type ScenarioResult,
 } from './index';
-import { APP_OPTION, OutsideWorkingDirectoryError, UsageError, messagesFileWithin, parsePublishCommand } from './cli';
+import {
+  APP_OPTION,
+  OutsideWorkingDirectoryError,
+  RunOutcomeDescriptions,
+  UsageError,
+  describeOutcome,
+  messagesFileWithin,
+  parsePublishCommand,
+} from './cli';
 import { newCount, newHttpsAddress, newId, newMemberOf, newText } from '../testing';
 
 const INSERT_INTO_RUNS = /^INSERT INTO runs /;
@@ -68,6 +78,28 @@ function newResult(): ScenarioResult {
     failedStep: null,
     errorMessage: null,
   };
+}
+
+function newFailedOutcome(): RunOutcome {
+  return { finishedAt: new Date(), success: false, errorMessage: newText() };
+}
+
+const SUCCEEDED: RunOutcome = { finishedAt: new Date(), success: true, errorMessage: null };
+
+function expectedRunValues(run: RunIdentity, startedAt: Date, outcome: RunOutcome): unknown[] {
+  return [
+    run.app,
+    run.runId,
+    run.runAttempt,
+    run.runUrl,
+    run.gitSha,
+    run.gitRef,
+    run.event,
+    startedAt,
+    outcome.finishedAt,
+    outcome.success,
+    outcome.errorMessage,
+  ];
 }
 
 function expectedScenarioValues(run: RunIdentity, result: ScenarioResult): unknown[] {
@@ -132,30 +164,57 @@ test('the run and every scenario are inserted in one transaction, run first', as
   const startedAt = new Date();
   const results = Array.from({ length: newCount() }, () => newResult());
 
-  await publishScenarioResults(client, run, startedAt, results);
+  await publishScenarioResults(client, run, startedAt, SUCCEEDED, results);
 
   assert.equal(client.queries[0].text, SqlCommands.begin);
   assert.match(client.queries[1].text, INSERT_INTO_RUNS);
   assert.match(client.queries[2].text, INSERT_INTO_SCENARIO_RESULTS);
   assert.equal(client.queries[3].text, SqlCommands.commit);
   assert.equal(client.queries.at(-1), client.queries[3]);
-  assert.deepEqual(client.queries[1].values, [
-    run.app,
-    run.runId,
-    run.runAttempt,
-    run.runUrl,
-    run.gitSha,
-    run.gitRef,
-    run.event,
-    startedAt,
-  ]);
+  assert.deepEqual(client.queries[1].values, expectedRunValues(run, startedAt, SUCCEEDED));
   assert.deepEqual(client.queries[2].values, results.flatMap((result) => expectedScenarioValues(run, result)));
+});
+
+test('a run that did not succeed is published with its finish time, its failure and its error message', async () => {
+  const client = new RecordingClient(null);
+  const run = newRun();
+  const startedAt = new Date();
+  const outcome = newFailedOutcome();
+
+  await publishScenarioResults(client, run, startedAt, outcome, [newResult()]);
+
+  assert.deepEqual(client.queries[1].values, expectedRunValues(run, startedAt, outcome));
+});
+
+test('a run that did not finish is published with its scenarios, marked unfinished and unsuccessful', async () => {
+  const client = new RecordingClient(null);
+  const run = newRun();
+  const startedAt = new Date();
+  const results = [newResult()];
+
+  await publishScenarioResults(client, run, startedAt, UNFINISHED_RUN, results);
+
+  assert.deepEqual(client.queries[1].values, expectedRunValues(run, startedAt, UNFINISHED_RUN));
+  assert.deepEqual(client.queries[2].values, results.flatMap((result) => expectedScenarioValues(run, result)));
+  assert.equal(client.queries.at(-1)?.text, SqlCommands.commit);
+});
+
+test('a run that stopped before finishing any scenario is still published, as the run alone', async () => {
+  const client = new RecordingClient(null);
+
+  await publishScenarioResults(client, newRun(), new Date(), UNFINISHED_RUN, []);
+
+  assert.match(client.queries[1].text, INSERT_INTO_RUNS);
+  assert.deepEqual(
+    client.queries.map((query) => query.text),
+    [SqlCommands.begin, client.queries[1].text, SqlCommands.commit],
+  );
 });
 
 test('a failed insert rolls the whole run back and reports the failure', async () => {
   const client = new RecordingClient(INSERT_INTO_SCENARIO_RESULTS);
 
-  await assert.rejects(publishScenarioResults(client, newRun(), new Date(), [newResult()]));
+  await assert.rejects(publishScenarioResults(client, newRun(), new Date(), SUCCEEDED, [newResult()]));
 
   assert.equal(client.queries[0].text, SqlCommands.begin);
   assert.match(client.queries[2].text, INSERT_INTO_SCENARIO_RESULTS);
@@ -163,12 +222,21 @@ test('a failed insert rolls the whole run back and reports the failure', async (
   assert.equal(client.queries.some((query) => query.text === SqlCommands.commit), false);
 });
 
-test('a run with no finished scenario is refused before anything is written', async () => {
+test('a run that reports success with no finished scenario is refused before anything is written', async () => {
   const client = new RecordingClient(null);
 
-  await assert.rejects(publishScenarioResults(client, newRun(), new Date(), []), NothingExecutedError);
+  await assert.rejects(publishScenarioResults(client, newRun(), new Date(), SUCCEEDED, []), NothingExecutedError);
 
   assert.deepEqual(client.queries, []);
+});
+
+test('an unfinished run is described as not finished, whatever it reports about success', () => {
+  assert.equal(describeOutcome(UNFINISHED_RUN), RunOutcomeDescriptions.unfinished);
+});
+
+test('a finished run is described by whether it succeeded', () => {
+  assert.equal(describeOutcome(SUCCEEDED), RunOutcomeDescriptions.succeeded);
+  assert.equal(describeOutcome(newFailedOutcome()), RunOutcomeDescriptions.failed);
 });
 
 test('the command takes an app and exactly one messages file', () => {

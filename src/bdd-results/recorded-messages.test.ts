@@ -1,16 +1,41 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { EOL } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { TestStepResultStatuses, parseEnvelopes, runStartedAt, toScenarioResults } from './index';
+import {
+  MalformedMessagesError,
+  TestStepResultStatuses,
+  UNFINISHED_RUN,
+  parseEnvelopes,
+  runOutcome,
+  runStartedAt,
+  toInstant,
+  toScenarioResults,
+  type Envelope,
+} from './index';
 import { MESSAGES_ENCODING } from './cli';
-import { RECORDED_REQNROLL_RUN_FROM_COMPILED_TEST } from './recorded/recorded-run-constants';
+import {
+  RECORDED_KILLED_REQNROLL_RUN_FROM_COMPILED_TEST,
+  RECORDED_REQNROLL_RUN_FROM_COMPILED_TEST,
+} from './recorded/recorded-run-constants';
 
-const envelopes = parseEnvelopes(readFileSync(join(__dirname, ...RECORDED_REQNROLL_RUN_FROM_COMPILED_TEST), MESSAGES_ENCODING));
+function readRecorded(pathFromCompiledTest: readonly string[]): string {
+  return readFileSync(join(__dirname, ...pathFromCompiledTest), MESSAGES_ENCODING);
+}
+
+function finishesOf(recorded: readonly Envelope[]): unknown[] {
+  return recorded.flatMap((envelope) => (envelope.testCaseFinished === undefined ? [] : [envelope.testCaseFinished]));
+}
+
+const envelopes = parseEnvelopes(readRecorded(RECORDED_REQNROLL_RUN_FROM_COMPILED_TEST));
 const features = envelopes.flatMap((envelope) => (envelope.gherkinDocument?.feature === undefined ? [] : [envelope.gherkinDocument.feature]));
 const pickles = envelopes.flatMap((envelope) => (envelope.pickle === undefined ? [] : [envelope.pickle]));
-const finishes = envelopes.flatMap((envelope) => (envelope.testCaseFinished === undefined ? [] : [envelope.testCaseFinished]));
+const finishes = finishesOf(envelopes);
+const runFinishes = envelopes.flatMap((envelope) => (envelope.testRunFinished === undefined ? [] : [envelope.testRunFinished]));
 const tagNamesByScenario = new Map(pickles.map((pickle) => [pickle.name, pickle.tags.map((tag) => tag.name)]));
+const killedMessages = readRecorded(RECORDED_KILLED_REQNROLL_RUN_FROM_COMPILED_TEST);
+const killedEnvelopes = parseEnvelopes(killedMessages);
 
 test('a recorded Reqnroll run yields one result per finished scenario, each placed in its feature', () => {
   const results = toScenarioResults(envelopes);
@@ -41,4 +66,27 @@ test('a recorded Reqnroll run has a start time before any of its scenarios began
   const results = toScenarioResults(envelopes);
 
   assert.equal(results.every((result) => result.startedAt >= started), true);
+});
+
+test('a recorded Reqnroll run that passed finished successfully at the time testRunFinished gives', () => {
+  assert.deepEqual(runOutcome(envelopes), {
+    finishedAt: toInstant(runFinishes[0].timestamp),
+    success: true,
+    errorMessage: null,
+  });
+});
+
+test('a recorded Reqnroll run killed mid-write ends on a cut-off line, which a line break after it would make corrupt', () => {
+  assert.throws(() => parseEnvelopes(`${killedMessages}${EOL}`), MalformedMessagesError);
+});
+
+test('a recorded Reqnroll run killed mid-write yields every scenario it finished', () => {
+  const results = toScenarioResults(killedEnvelopes);
+
+  assert.equal(results.length, finishesOf(killedEnvelopes).length);
+  assert.notEqual(results.length, 0);
+});
+
+test('a recorded Reqnroll run killed mid-write reads as a run that did not finish', () => {
+  assert.deepEqual(runOutcome(killedEnvelopes), UNFINISHED_RUN);
 });
