@@ -1,10 +1,13 @@
 import {
   TEST_STEP_RESULT_STATUSES,
   TestStepResultStatuses,
+  type Duration,
   type Envelope,
   type FeatureChild,
   type GherkinDocument,
   type Pickle,
+  type PickleStep,
+  type PickleStepType,
   type Rule,
   type TestCase,
   type TestCaseFinished,
@@ -17,6 +20,16 @@ import {
 const MILLISECONDS_PER_SECOND = 1000;
 const NANOSECONDS_PER_MILLISECOND = 1_000_000;
 const PASSED = TestStepResultStatuses.passed;
+
+export interface StepResult {
+  readonly position: number;
+  readonly type: PickleStepType;
+  readonly text: string;
+  readonly status: TestStepResultStatus;
+  readonly startedAt: Date;
+  readonly finishedAt: Date;
+  readonly errorMessage: string | null;
+}
 
 export interface ScenarioResult {
   readonly testCaseStartedId: string;
@@ -31,6 +44,7 @@ export interface ScenarioResult {
   readonly finishedAt: Date;
   readonly failedStep: string | null;
   readonly errorMessage: string | null;
+  readonly steps: readonly StepResult[];
 }
 
 interface ScenarioPlacement {
@@ -98,6 +112,10 @@ export function toInstant(timestamp: Timestamp): Date {
   return new Date(Number(timestamp.seconds) * MILLISECONDS_PER_SECOND + timestamp.nanos / NANOSECONDS_PER_MILLISECOND);
 }
 
+export function toMilliseconds(duration: Duration): number {
+  return Number(duration.seconds) * MILLISECONDS_PER_SECOND + duration.nanos / NANOSECONDS_PER_MILLISECOND;
+}
+
 function required<T>(items: ReadonlyMap<string, T>, id: string, kind: string): T {
   const item = items.get(id);
   if (item === undefined) {
@@ -155,6 +173,40 @@ function firstUnpassedStep(
     text: nonBlankOrNull(pickleStep?.text),
     message: nonBlankOrNull(resultByStep.get(unpassed.id)?.message),
   };
+}
+
+function typeOf(pickleStep: PickleStep): PickleStepType {
+  if (pickleStep.type === undefined) {
+    throw new MalformedMessagesError(`Pickle step ${pickleStep.id} has no type, so it cannot be placed as a Given, When or Then.`);
+  }
+  return pickleStep.type;
+}
+
+function stepResultsOf(
+  testCase: TestCase,
+  pickle: Pickle,
+  finishedSteps: readonly TestStepFinished[],
+): StepResult[] {
+  const pickleSteps = indexById(pickle.steps, (step) => step.id);
+  const finishedById = indexById(finishedSteps, (step) => step.testStepId);
+  return testCase.testSteps
+    .flatMap((testStep) => (testStep.pickleStepId === undefined ? [] : [{ testStep, pickleStepId: testStep.pickleStepId }]))
+    .map(({ testStep, pickleStepId }, index) => {
+      const pickleStep = required(pickleSteps, pickleStepId, 'pickle step');
+      const finished = required(finishedById, testStep.id, 'testStepFinished');
+      const finishedAt = toInstant(finished.timestamp);
+      const result = finished.testStepResult;
+      return {
+        position: index + 1,
+        type: typeOf(pickleStep),
+        text: pickleStep.text,
+        status: result.status,
+        startedAt: new Date(finishedAt.getTime() - toMilliseconds(result.duration)),
+        finishedAt,
+        errorMessage:
+          result.status === PASSED ? null : (nonBlankOrNull(result.exception?.message) ?? nonBlankOrNull(result.message)),
+      };
+    });
 }
 
 export function runStartedAt(envelopes: readonly Envelope[]): Date {
@@ -225,6 +277,7 @@ export function toScenarioResults(envelopes: readonly Envelope[]): ScenarioResul
       finishedAt: toInstant(finished.timestamp),
       failedStep: unpassed?.text ?? null,
       errorMessage: unpassed?.message ?? null,
+      steps: stepResultsOf(testCase, pickle, finishedSteps),
     };
   });
 }

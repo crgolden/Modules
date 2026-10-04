@@ -20,7 +20,21 @@ export const TEST_STEP_RESULT_STATUSES: readonly TestStepResultStatus[] = [
   TestStepResultStatuses.failed,
 ];
 
+export const PickleStepTypes = {
+  unknown: 'Unknown',
+  context: 'Context',
+  action: 'Action',
+  outcome: 'Outcome',
+} as const;
+
+export type PickleStepType = (typeof PickleStepTypes)[keyof typeof PickleStepTypes];
+
 export interface Timestamp {
+  readonly seconds: number | string;
+  readonly nanos: number;
+}
+
+export interface Duration {
   readonly seconds: number | string;
   readonly nanos: number;
 }
@@ -61,6 +75,7 @@ export interface GherkinDocument {
 export interface PickleStep {
   readonly id: string;
   readonly text: string;
+  readonly type?: PickleStepType;
 }
 
 export interface Pickle {
@@ -90,18 +105,20 @@ export interface TestCaseStarted {
   readonly timestamp: Timestamp;
 }
 
+export interface Exception {
+  readonly type: string;
+  readonly message?: string;
+}
+
 export interface TestStepResult {
   readonly status: TestStepResultStatus;
+  readonly duration: Duration;
   readonly message?: string;
+  readonly exception?: Exception;
 }
 
 export interface TestRunStarted {
   readonly timestamp: Timestamp;
-}
-
-export interface Exception {
-  readonly type: string;
-  readonly message?: string;
 }
 
 export interface TestRunFinished {
@@ -115,6 +132,7 @@ export interface TestStepFinished {
   readonly testCaseStartedId: string;
   readonly testStepId: string;
   readonly testStepResult: TestStepResult;
+  readonly timestamp: Timestamp;
 }
 
 export interface TestCaseFinished {

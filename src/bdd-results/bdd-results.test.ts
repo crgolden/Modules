@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   MalformedMessagesError,
+  PickleStepTypes,
   TEST_STEP_RESULT_STATUSES,
   TestStepResultStatuses,
   UNFINISHED_RUN,
@@ -9,9 +10,13 @@ import {
   runOutcome,
   runStartedAt,
   toInstant,
+  toMilliseconds,
   toScenarioResults,
   worstStatus,
+  type Duration,
   type Envelope,
+  type PickleStepType,
+  type StepResult,
   type TestStepResultStatus,
   type Timestamp,
 } from './index';
@@ -29,8 +34,13 @@ interface RecordedRun {
   readonly featureUri: string;
   readonly scenarioName: string;
   readonly tagNames: string[];
+  readonly steps: readonly RecordedStep[];
   readonly stepTexts: string[];
   readonly stepMessages: string[];
+  readonly stepExceptionMessages: string[];
+  readonly stepTypes: PickleStepType[];
+  readonly stepDurations: Duration[];
+  readonly stepFinishes: Timestamp[];
   readonly attempt: number;
   readonly runStarted: Timestamp;
   readonly started: Timestamp;
@@ -60,6 +70,10 @@ function recordRun(steps: readonly RecordedStep[], ruleName: string | null): Rec
   const tagNames = [`@${newText()}`, `@${newText()}`];
   const stepTexts = steps.map(() => newText());
   const stepMessages = steps.map(() => newText());
+  const stepExceptionMessages = steps.map(() => newText());
+  const stepTypes = steps.map(() => newMemberOf(Object.values(PickleStepTypes)));
+  const stepDurations = steps.map(() => newTimestamp());
+  const stepFinishes = steps.map(() => newTimestamp());
   const pickleStepIds = steps.map(() => newId());
   const testStepIds = steps.map(() => newId());
   const attempt = newCount();
@@ -78,7 +92,9 @@ function recordRun(steps: readonly RecordedStep[], ruleName: string | null): Rec
         name: scenarioName,
         astNodeIds: [scenarioId],
         tags: tagNames.map((name) => ({ name })),
-        steps: steps.flatMap((step, index) => (step.fromHook ? [] : [{ id: pickleStepIds[index], text: stepTexts[index] }])),
+        steps: steps.flatMap((step, index) =>
+          step.fromHook ? [] : [{ id: pickleStepIds[index], text: stepTexts[index], type: stepTypes[index] }],
+        ),
       },
     },
     {
@@ -95,7 +111,13 @@ function recordRun(steps: readonly RecordedStep[], ruleName: string | null): Rec
       testStepFinished: {
         testCaseStartedId,
         testStepId: testStepIds[index],
-        testStepResult: { status: step.status, message: stepMessages[index] },
+        testStepResult: {
+          status: step.status,
+          duration: stepDurations[index],
+          message: stepMessages[index],
+          exception: { type: newText(), message: stepExceptionMessages[index] },
+        },
+        timestamp: stepFinishes[index],
       },
     })),
     { testCaseFinished: { testCaseStartedId, timestamp: finished } },
@@ -107,13 +129,34 @@ function recordRun(steps: readonly RecordedStep[], ruleName: string | null): Rec
     featureUri,
     scenarioName,
     tagNames,
+    steps,
     stepTexts,
     stepMessages,
+    stepExceptionMessages,
+    stepTypes,
+    stepDurations,
+    stepFinishes,
     attempt,
     runStarted,
     started,
     finished,
   };
+}
+
+function startedBefore(finished: Timestamp, duration: Duration): Date {
+  return new Date(toInstant(finished).getTime() - toMilliseconds(duration));
+}
+
+function passedStepsOf(run: RecordedRun): StepResult[] {
+  return run.stepTexts.map((text, index) => ({
+    position: index + 1,
+    type: run.stepTypes[index],
+    text,
+    status: TestStepResultStatuses.passed,
+    startedAt: startedBefore(run.stepFinishes[index], run.stepDurations[index]),
+    finishedAt: toInstant(run.stepFinishes[index]),
+    errorMessage: null,
+  }));
 }
 
 test('a passing scenario carries its feature, scenario, tags, attempt and times, and names no failed step', () => {
@@ -134,7 +177,91 @@ test('a passing scenario carries its feature, scenario, tags, attempt and times,
     finishedAt: toInstant(run.finished),
     failedStep: null,
     errorMessage: null,
+    steps: passedStepsOf(run),
   });
+});
+
+test('every scenario step is recorded in order with its Given, When or Then type, its text, its status and its times', () => {
+  const run = recordRun([scenarioStep(TestStepResultStatuses.passed), scenarioStep(TestStepResultStatuses.passed), scenarioStep(TestStepResultStatuses.passed)], null);
+
+  const [result] = toScenarioResults(run.envelopes);
+
+  assert.deepEqual(result.steps, passedStepsOf(run));
+});
+
+test('a hook is not a step of the journey, so steps are numbered among the scenario steps alone', () => {
+  const run = recordRun([hookStep(TestStepResultStatuses.passed), scenarioStep(TestStepResultStatuses.passed), scenarioStep(TestStepResultStatuses.passed)], null);
+
+  const [result] = toScenarioResults(run.envelopes);
+
+  assert.deepEqual(
+    result.steps.map((step) => step.text),
+    run.stepTexts.slice(1),
+  );
+  assert.deepEqual(
+    result.steps.map((step) => step.position),
+    result.steps.map((_, index) => index + 1),
+  );
+});
+
+test('a step that did not pass carries the exception message rather than the stack-bearing result message', () => {
+  const run = recordRun([scenarioStep(TestStepResultStatuses.passed), scenarioStep(TestStepResultStatuses.failed), scenarioStep(TestStepResultStatuses.skipped)], null);
+
+  const [result] = toScenarioResults(run.envelopes);
+
+  assert.deepEqual(
+    result.steps.map((step) => step.errorMessage),
+    [null, ...run.stepExceptionMessages.slice(1)],
+  );
+});
+
+function withoutExceptions(envelopes: readonly Envelope[]): Envelope[] {
+  return envelopes.map((envelope) =>
+    envelope.testStepFinished === undefined
+      ? envelope
+      : {
+          testStepFinished: {
+            ...envelope.testStepFinished,
+            testStepResult: { ...envelope.testStepFinished.testStepResult, exception: undefined },
+          },
+        },
+  );
+}
+
+test('a step that did not pass and has no exception falls back to the result message', () => {
+  const run = recordRun([scenarioStep(TestStepResultStatuses.failed)], null);
+
+  const [result] = toScenarioResults(withoutExceptions(run.envelopes));
+
+  assert.equal(result.steps[0].errorMessage, run.stepMessages[0]);
+});
+
+function withoutStepTypes(envelopes: readonly Envelope[]): Envelope[] {
+  return envelopes.map((envelope) =>
+    envelope.pickle === undefined
+      ? envelope
+      : { pickle: { ...envelope.pickle, steps: envelope.pickle.steps.map((step) => ({ id: step.id, text: step.text })) } },
+  );
+}
+
+test('a pickle step with no type fails closed rather than guessing whether it is a Given, When or Then', () => {
+  const run = recordRun([scenarioStep(TestStepResultStatuses.passed)], null);
+
+  assert.throws(() => toScenarioResults(withoutStepTypes(run.envelopes)), MalformedMessagesError);
+});
+
+test('a finished scenario with a step that never finished fails closed rather than dropping the step', () => {
+  const run = recordRun([scenarioStep(TestStepResultStatuses.passed), scenarioStep(TestStepResultStatuses.passed)], null);
+  const firstStepFinish = run.envelopes.find((envelope) => envelope.testStepFinished !== undefined);
+  const envelopes = run.envelopes.filter((envelope) => envelope !== firstStepFinish);
+
+  assert.throws(() => toScenarioResults(envelopes), MalformedMessagesError);
+});
+
+test('a duration reads as the same instant offset as a timestamp of the same seconds and nanos', () => {
+  const duration = newTimestamp();
+
+  assert.deepEqual(new Date(toMilliseconds(duration)), toInstant(duration));
 });
 
 test('a failed scenario names the first step that did not pass and carries its message', () => {

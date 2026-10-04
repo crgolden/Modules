@@ -68,6 +68,22 @@ test('a recorded Reqnroll run has a start time before any of its scenarios began
   assert.equal(results.every((result) => result.startedAt >= started), true);
 });
 
+test('a recorded Reqnroll run records every pickle step of every scenario with the type and text its pickle gives', () => {
+  const recorded = toScenarioResults(envelopes).flatMap((result) => result.steps.map((step) => `${step.type} ${step.text}`));
+  const declared = pickles.flatMap((pickle) => pickle.steps.map((step) => `${step.type} ${step.text}`));
+
+  assert.equal(recorded.length, declared.length);
+  assert.deepEqual(new Set(recorded), new Set(declared));
+});
+
+test('a recorded Reqnroll run that passed reports every step passed, with no error and a start no later than its finish', () => {
+  const steps = toScenarioResults(envelopes).flatMap((result) => result.steps);
+
+  assert.deepEqual(new Set(steps.map((step) => step.status)), new Set([TestStepResultStatuses.passed]));
+  assert.deepEqual(new Set(steps.map((step) => step.errorMessage)), new Set([null]));
+  assert.equal(steps.every((step) => step.startedAt <= step.finishedAt), true);
+});
+
 test('a recorded Reqnroll run that passed finished successfully at the time testRunFinished gives', () => {
   assert.deepEqual(runOutcome(envelopes), {
     finishedAt: toInstant(runFinishes[0].timestamp),

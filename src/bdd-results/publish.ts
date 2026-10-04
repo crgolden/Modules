@@ -1,4 +1,4 @@
-import type { RunOutcome, ScenarioResult } from './scenario-results';
+import type { RunOutcome, ScenarioResult, StepResult } from './scenario-results';
 
 export const RUN_ENVIRONMENT_KEYS = {
   runId: 'GITHUB_RUN_ID',
@@ -17,6 +17,8 @@ export const SqlCommands = {
   commit: 'COMMIT',
   rollback: 'ROLLBACK',
 } as const;
+
+export const POSTGRES_MAX_BIND_PARAMETERS = 65_535;
 
 export interface RunIdentity {
   readonly app: string;
@@ -107,6 +109,20 @@ const SCENARIO_COLUMNS = [
   'finished_at',
 ];
 
+const STEP_COLUMNS = [
+  'app',
+  'run_id',
+  'run_attempt',
+  'test_case_started_id',
+  'position',
+  'step_type',
+  'text',
+  'status',
+  'error_message',
+  'started_at',
+  'finished_at',
+];
+
 function parameter(position: number): string {
   return `$${position}`;
 }
@@ -140,6 +156,40 @@ function scenarioRow(run: RunIdentity, result: ScenarioResult): unknown[] {
   ];
 }
 
+function stepRow(run: RunIdentity, result: ScenarioResult, step: StepResult): unknown[] {
+  return [
+    run.app,
+    run.runId,
+    run.runAttempt,
+    result.testCaseStartedId,
+    step.position,
+    step.type,
+    step.text,
+    step.status,
+    step.errorMessage,
+    step.startedAt,
+    step.finishedAt,
+  ];
+}
+
+export function rowsPerInsert(columnCount: number): number {
+  return Math.floor(POSTGRES_MAX_BIND_PARAMETERS / columnCount);
+}
+
+function batchesOf(rows: readonly unknown[][], size: number): unknown[][][] {
+  return Array.from({ length: Math.ceil(rows.length / size) }, (_, batch) => rows.slice(batch * size, (batch + 1) * size));
+}
+
+function insertRows(client: Queryable, table: string, columns: readonly string[], rows: readonly unknown[][]): Promise<unknown> {
+  return batchesOf(rows, rowsPerInsert(columns.length)).reduce<Promise<unknown>>(
+    (previous, batch) =>
+      previous.then(() =>
+        client.query(`INSERT INTO ${table} (${columns.join(', ')}) VALUES ${placeholders(batch.length, columns.length)}`, batch.flat()),
+      ),
+    Promise.resolve(),
+  );
+}
+
 export async function publishScenarioResults(
   client: Queryable,
   run: RunIdentity,
@@ -165,12 +215,13 @@ export async function publishScenarioResults(
       outcome.success,
       outcome.errorMessage,
     ]);
-    if (results.length > 0) {
-      await client.query(
-        `INSERT INTO scenario_results (${SCENARIO_COLUMNS.join(', ')}) VALUES ${placeholders(results.length, SCENARIO_COLUMNS.length)}`,
-        results.flatMap((result) => scenarioRow(run, result)),
-      );
-    }
+    await insertRows(client, 'scenario_results', SCENARIO_COLUMNS, results.map((result) => scenarioRow(run, result)));
+    await insertRows(
+      client,
+      'step_results',
+      STEP_COLUMNS,
+      results.flatMap((result) => result.steps.map((step) => stepRow(run, result, step))),
+    );
     await client.query(SqlCommands.commit);
   } catch (error) {
     await client.query(SqlCommands.rollback);

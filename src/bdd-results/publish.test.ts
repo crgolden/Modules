@@ -6,16 +6,20 @@ import { test } from 'node:test';
 import {
   MissingRunSettingError,
   NothingExecutedError,
+  POSTGRES_MAX_BIND_PARAMETERS,
+  PickleStepTypes,
   RUN_ENVIRONMENT_KEYS,
   SqlCommands,
   TestStepResultStatuses,
   UNFINISHED_RUN,
   publishScenarioResults,
+  rowsPerInsert,
   runIdentityFromEnvironment,
   type Queryable,
   type RunIdentity,
   type RunOutcome,
   type ScenarioResult,
+  type StepResult,
 } from './index';
 import {
   APP_OPTION,
@@ -30,6 +34,7 @@ import { newCount, newHttpsAddress, newId, newMemberOf, newText } from '../testi
 
 const INSERT_INTO_RUNS = /^INSERT INTO runs /;
 const INSERT_INTO_SCENARIO_RESULTS = /^INSERT INTO scenario_results /;
+const INSERT_INTO_STEP_RESULTS = /^INSERT INTO step_results /;
 
 interface RecordedQuery {
   readonly text: string;
@@ -63,7 +68,23 @@ function newRun(): RunIdentity {
   return runIdentityFromEnvironment(newText(), newRunEnvironment());
 }
 
-function newResult(): ScenarioResult {
+function newStep(position: number): StepResult {
+  return {
+    position,
+    type: newMemberOf(Object.values(PickleStepTypes)),
+    text: newText(),
+    status: TestStepResultStatuses.passed,
+    startedAt: new Date(),
+    finishedAt: new Date(),
+    errorMessage: null,
+  };
+}
+
+function newSteps(): StepResult[] {
+  return Array.from({ length: newCount() }, (_, index) => newStep(index + 1));
+}
+
+function newResult(steps: readonly StepResult[] = newSteps()): ScenarioResult {
   return {
     testCaseStartedId: newId(),
     feature: newText(),
@@ -77,6 +98,7 @@ function newResult(): ScenarioResult {
     finishedAt: new Date(),
     failedStep: null,
     errorMessage: null,
+    steps,
   };
 }
 
@@ -122,6 +144,26 @@ function expectedScenarioValues(run: RunIdentity, result: ScenarioResult): unkno
   ];
 }
 
+function expectedStepValues(run: RunIdentity, result: ScenarioResult): unknown[] {
+  return result.steps.flatMap((step) => [
+    run.app,
+    run.runId,
+    run.runAttempt,
+    result.testCaseStartedId,
+    step.position,
+    step.type,
+    step.text,
+    step.status,
+    step.errorMessage,
+    step.startedAt,
+    step.finishedAt,
+  ]);
+}
+
+function insertsInto(client: RecordingClient, table: RegExp): RecordedQuery[] {
+  return client.queries.filter((query) => table.test(query.text));
+}
+
 test('the run identity comes from the GitHub Actions environment, with the run URL built from it', () => {
   const environment = newRunEnvironment();
   const app = newText();
@@ -158,21 +200,45 @@ test('a run id that is not a whole number is refused', () => {
   );
 });
 
-test('the run and every scenario are inserted in one transaction, run first', async () => {
+test('the run, every scenario and every step are inserted in one transaction, run first and steps last', async () => {
   const client = new RecordingClient(null);
   const run = newRun();
   const startedAt = new Date();
-  const results = Array.from({ length: newCount() }, () => newResult());
+  const results = [newResult()];
 
   await publishScenarioResults(client, run, startedAt, SUCCEEDED, results);
 
   assert.equal(client.queries[0].text, SqlCommands.begin);
   assert.match(client.queries[1].text, INSERT_INTO_RUNS);
   assert.match(client.queries[2].text, INSERT_INTO_SCENARIO_RESULTS);
-  assert.equal(client.queries[3].text, SqlCommands.commit);
-  assert.equal(client.queries.at(-1), client.queries[3]);
+  assert.match(client.queries[3].text, INSERT_INTO_STEP_RESULTS);
+  assert.equal(client.queries[4].text, SqlCommands.commit);
+  assert.equal(client.queries.at(-1), client.queries[4]);
   assert.deepEqual(client.queries[1].values, expectedRunValues(run, startedAt, SUCCEEDED));
   assert.deepEqual(client.queries[2].values, results.flatMap((result) => expectedScenarioValues(run, result)));
+  assert.deepEqual(client.queries[3].values, results.flatMap((result) => expectedStepValues(run, result)));
+});
+
+test('scenarios with no recorded steps insert no step rows', async () => {
+  const client = new RecordingClient(null);
+
+  await publishScenarioResults(client, newRun(), new Date(), SUCCEEDED, [newResult([])]);
+
+  assert.deepEqual(insertsInto(client, INSERT_INTO_STEP_RESULTS), []);
+});
+
+test('rows beyond what one statement can bind are split across inserts, in order, none over the limit', async () => {
+  const client = new RecordingClient(null);
+  const run = newRun();
+  const columnCount = expectedScenarioValues(run, newResult([])).length;
+  const results = Array.from({ length: rowsPerInsert(columnCount) + newCount() }, () => newResult([]));
+
+  await publishScenarioResults(client, run, new Date(), SUCCEEDED, results);
+
+  const inserts = insertsInto(client, INSERT_INTO_SCENARIO_RESULTS);
+  assert.equal(inserts.length, Math.ceil(results.length / rowsPerInsert(columnCount)));
+  assert.deepEqual(inserts.flatMap((insert) => insert.values), results.flatMap((result) => expectedScenarioValues(run, result)));
+  assert.equal(inserts.every((insert) => insert.values.length <= POSTGRES_MAX_BIND_PARAMETERS), true);
 });
 
 test('a run that did not succeed is published with its finish time, its failure and its error message', async () => {
