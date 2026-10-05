@@ -1,4 +1,4 @@
-param([string]$Goal)
+param([string]$Goal, [string[]]$Steps)
 
 $ErrorActionPreference = 'Continue'
 $gateCommon = Join-Path $PSScriptRoot '..\Tools\Gates\GateCommon.ps1'
@@ -10,6 +10,14 @@ if (-not (Test-Path -LiteralPath $gateCommon)) {
 
 Register-GateSteps @('node_modules install markers', 'npm run lint', 'npm run build', 'npm test', 'SonarCloud analysis',
     'Fail on open Sonar issues')
+Register-StepInputs @{
+    'node_modules install markers' = @('package.json', 'package-lock.json', 'gate.ps1')
+    'npm run lint'                 = @('*')
+    'npm run build'                = @('*')
+    'npm test'                     = @('*')
+    'SonarCloud analysis'          = @('*')
+    'Fail on open Sonar issues'    = @('*')
+}
 $repo = $PSScriptRoot
 $sonarBranch = "branch-local-$($env:COMPUTERNAME.ToLowerInvariant())"
 $sonarStep = "SonarCloud analysis (sonar-scanner, branch $sonarBranch, quality gate waited)"
@@ -19,6 +27,7 @@ $env:CI = 'true'
 if ($env:TZ -ne 'UTC') { Write-Host 'GATE: FAILED (TZ pin)'; exit 1 }
 Set-Location $repo
 Initialize-GateState 'Modules' $repo
+Assert-RequestedSteps $Steps
 Invoke-CatalogSteps
 
 $installed = (Test-Path (Join-Path $repo 'node_modules\.package-lock.json')) -and
