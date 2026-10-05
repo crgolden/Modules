@@ -11,7 +11,7 @@ if (-not (Test-Path -LiteralPath $gateCommon)) {
 Register-GateSteps @('node_modules install markers', 'npm run lint', 'npm run build', 'npm test', 'SonarCloud analysis',
     'Fail on open Sonar issues')
 Register-StepInputs @{
-    'node_modules install markers' = @('package.json', 'package-lock.json', 'gate.ps1')
+    'node_modules install markers' = @('package.json', 'package-lock.json')
     'npm run lint'                 = @('*')
     'npm run build'                = @('*')
     'npm test'                     = @('*')
