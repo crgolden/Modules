@@ -38,6 +38,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Audit dependencies (fails on high or critical)
+        run: npm run audit
+
       - name: Test
         run: npm test
 

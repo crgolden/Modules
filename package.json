@@ -34,6 +34,7 @@
   },
   "scripts": {
     "lint": "eslint .",
+    "audit": "node dist/npm-audit/cli.js",
     "build": "ngc -p tsconfig.primitives.json && tsc -p tsconfig.json && tsc -p tsconfig.esm.json && node scripts/mark-esm-output.mjs",
     "test": "tsc -p tsconfig.test.json && c8 --reporter=text-summary --reporter=lcovonly --reports-dir=coverage node --test dist-test/eslint-angular/rules.test.js dist-test/synthetic-walker/pick-from-prefix.test.js dist-test/synthetic-walker/credential-slot.test.js dist-test/synthetic-walker/walk-configuration.test.js dist-test/testing/testing.test.js dist-test/design-gates/design-gates.test.js dist-test/design-gates/cli.test.js dist-test/scroll-restoration/scroll-restoration.test.js dist-test/server-startup/server-startup.test.js dist-test/bdd-results/bdd-results.test.js dist-test/bdd-results/publish.test.js dist-test/bdd-results/recorded-messages.test.js dist-test/npm-audit/audit.test.js dist-test/npm-audit/cli.test.js",
     "enroll-passkey": "npm run build && node dist/synthetic-walker/enroll-passkey.js",

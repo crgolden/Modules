@@ -8,16 +8,18 @@ if (-not (Test-Path -LiteralPath $gateCommon)) {
 }
 . $gateCommon
 
-Register-GateSteps @('node_modules install markers', 'npm run lint', 'npm run build', 'npm test', 'SonarCloud analysis',
-    'Fail on open Sonar issues')
+Register-GateSteps @('node_modules install markers', 'npm run lint', 'npm run build', 'npm run audit', 'npm test',
+    'SonarCloud analysis', 'Fail on open Sonar issues')
 Register-StepInputs @{
     'node_modules install markers' = @('package.json', 'package-lock.json')
     'npm run lint'                 = @('*')
     'npm run build'                = @('*')
+    'npm run audit'                = @('package.json', 'package-lock.json', 'src/npm-audit/*')
     'npm test'                     = @('*')
     'SonarCloud analysis'          = @('*')
     'Fail on open Sonar issues'    = @('*')
 }
+Register-VolatileSteps @('npm run audit')
 $repo = $PSScriptRoot
 $sonarBranch = "branch-local-$($env:COMPUTERNAME.ToLowerInvariant())"
 $sonarStep = "SonarCloud analysis (sonar-scanner, branch $sonarBranch, quality gate waited)"
@@ -33,7 +35,8 @@ Invoke-CatalogSteps
 $installed = (Test-Path (Join-Path $repo 'node_modules\.package-lock.json')) -and
     (Test-Path (Join-Path $repo 'node_modules\.bin\tsc.cmd'))
 if (-not $installed) { Stop-Gate 'node_modules install markers' 'incomplete install; run npm ci deliberately first' }
-Write-Row 'node_modules install markers' 'PASS' '.package-lock.json, tsc.cmd present'
+Assert-NodeInstallCurrent $repo
+Write-Row 'node_modules install markers' 'PASS' 'tsc.cmd present; every package matches package-lock.json'
 
 if (-not (Test-StepCarried 'npm run lint')) {
     $global:LASTEXITCODE = $null
@@ -45,6 +48,11 @@ if (-not (Test-StepCarried 'npm run build')) {
     $global:LASTEXITCODE = $null
     npm run build
     $null = Test-Exit 'npm run build'
+}
+if (-not (Test-StepCarried 'npm run audit')) {
+    $global:LASTEXITCODE = $null
+    npm run audit
+    $null = Test-Exit 'npm run audit'
 }
 
 if (-not (Test-StepCarried 'npm test')) {
