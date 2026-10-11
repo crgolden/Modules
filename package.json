@@ -82,7 +82,7 @@
     "@angular/compiler-cli": "^22.2.1",
     "@angular/core": "^22.2.1",
     "@angular/router": "^22.2.1",
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.64.0",
     "@types/node": "^26.6.4",
     "@types/pg": "^8.23.1",
     "@typescript-eslint/parser": "^8.71.1",
