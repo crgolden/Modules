@@ -42,7 +42,7 @@ How the modules are built and the rules each keeps: [ARCHITECTURE.md](ARCHITECTU
 - Node.js 24 (`.nvmrc`) and the npm that ships with it.
 - Nothing else for installing, building and testing: every dependency comes from the public npm registry.
 
-## Clone, install and build
+## Clone and build
 
 ```powershell
 git clone https://github.com/crgolden/Modules.git
@@ -79,8 +79,10 @@ database or secrets. [TESTING.md](TESTING.md) lists what each test covers.
 
 ## Gate
 
-`gate.ps1` is the maintainers' gate. It loads a private toolkit from a folder beside this repo, so in a plain clone it
-stops at once with `GATE: FAILED`. To gate your own change, run the checks CI runs, in this order:
+`gate.ps1` is the maintainers' gate. It dot-sources the gate library script that the `GATE_LIBRARY` environment
+variable names, which defines the step functions `gate.ps1` calls; unset, as in a plain clone, it stops at once with
+`GATE: FAILED` and records nothing. To gate with a library of your own, set `GATE_LIBRARY` to its path; it must
+define every function `gate.ps1` calls, since those functions decide whether each step ran and passed. To gate your own change without one, run the checks CI runs, in this order:
 
 ```powershell
 npm ci
@@ -90,9 +92,9 @@ npm run audit
 npm test
 ```
 
-## Publishing
+## Deployment
 
-Push to `main`. The publish workflow lints, builds, audits and tests the package, then publishes it when the version
+This package deploys by publishing to the `crgolden` GitHub Packages npm feed. Push to `main`. The publish workflow lints, builds, audits and tests the package, then publishes it when the version
 in `package.json` is not yet on the registry; bump the version in the same change as the code it describes. A push
 whose version is already published builds but publishes nothing.
 

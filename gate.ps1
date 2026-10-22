@@ -1,9 +1,9 @@
 param([string]$Goal)
 
 $ErrorActionPreference = 'Continue'
-$gateCommon = Join-Path $PSScriptRoot '..\Tools\Gates\GateCommon.ps1'
-if (-not (Test-Path -LiteralPath $gateCommon)) {
-    Write-Host "GATE: FAILED (the Tools repository must be cloned beside this one: $gateCommon)"
+$gateCommon = $env:GATE_LIBRARY
+if (-not $gateCommon -or -not (Test-Path -LiteralPath $gateCommon -PathType Leaf)) {
+    Write-Host 'GATE: FAILED (GATE_LIBRARY names no gate library script; README.md, section Gate, says how to plug one in or run the steps without one)'
     exit 1
 }
 . $gateCommon
@@ -66,7 +66,6 @@ if (Test-StepCarried $sonarIssues) {
 }
 else {
     $sonarStartedAt = [DateTimeOffset]::UtcNow
-    $env:JAVA_HOME = "$env:SystemDrive\sonar-scanner-8.0.1.6346-windows-x64\jre"
     $global:LASTEXITCODE = $null
     sonar-scanner -D"sonar.projectKey=crgolden_Modules" -D"sonar.organization=crgolden" -D"sonar.host.url=https://sonarcloud.io" -D"sonar.exclusions=**/node_modules/**,**/*.d.ts,dist/**,dist-test/**" -D"sonar.test.inclusions=**/*.test.ts" -D"sonar.javascript.lcov.reportPaths=coverage/lcov.info" -D"sonar.scanner.skipJreProvisioning=true" -D"sonar.qualitygate.wait=true" -D"sonar.branch.name=$sonarBranch"
     $null = Test-Exit $sonarStep
