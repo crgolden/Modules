@@ -1,4 +1,4 @@
-param([string]$Goal, [string]$Probe)
+param([string]$Goal, [string]$Probe, [string]$Only)
 
 $ErrorActionPreference = 'Continue'
 $gateCommon = $env:GATE_LIBRARY
@@ -28,7 +28,14 @@ $env:TZ = 'UTC'
 $env:CI = 'true'
 if ($env:TZ -ne 'UTC') { Write-Host 'GATE: FAILED (TZ pin)'; exit 1 }
 Set-Location $repo
-Initialize-GateState 'Modules' $repo -Probe $Probe
+if ($Only -and -not $Probe) { Write-Host 'PROBE: FAILED (-Only names the one test a probe runs, so it needs -Probe)'; exit 1 }
+if ($Probe -and ($Probe.Trim() -cne 'npm test' -or [string]::IsNullOrWhiteSpace($Only) -or $Only.Contains(','))) {
+    Write-Host "PROBE: FAILED (a probe runs exactly one test: -Probe 'npm test' -Only '<the test's name>')"
+    exit 1
+}
+$gateState = @{ Probe = $Probe }
+if ((Get-Command Initialize-GateState).Parameters.ContainsKey('Only')) { $gateState['Only'] = $Only }
+Initialize-GateState 'Modules' $repo @gateState
 Resolve-OwedSteps
 Invoke-CatalogSteps
 
@@ -55,7 +62,20 @@ if (-not (Test-StepCarried 'npm run audit')) {
     $null = Test-Exit 'npm run audit'
 }
 
-if (-not (Test-StepCarried 'npm test')) {
+if ($Only -and -not (Test-StepCarried 'npm test')) {
+    $testFiles = @([regex]::Matches((Get-Content -LiteralPath (Join-Path $repo 'package.json') -Raw | ConvertFrom-Json).scripts.test, 'dist-test/\S+?\.test\.js') | ForEach-Object Value)
+    $global:LASTEXITCODE = $null
+    npx tsc -p tsconfig.test.json
+    if ($global:LASTEXITCODE -ne 0) { Stop-Gate 'npm test' "tsc -p tsconfig.test.json exit $global:LASTEXITCODE" }
+    $global:LASTEXITCODE = $null
+    $testOutput = (node --test --test-reporter=tap "--test-name-pattern=$Only" @testFiles 2>&1 | Out-String)
+    $testExit = $global:LASTEXITCODE
+    Write-Host $testOutput
+    $passed = if ($testOutput -match '(?m)^# pass (\d+)') { [int]$Matches[1] } else { 0 }
+    if ($testExit -ne 0 -or $passed -ne 1) { Stop-Gate 'npm test' "a probe runs one test, and '$Only' passed $passed (exit $testExit)" }
+    Write-Row 'npm test' 'PASS' "one test, '$Only', passed"
+}
+elseif (-not (Test-StepCarried 'npm test')) {
     $global:LASTEXITCODE = $null
     npm test
     $null = Test-Exit 'npm test'
