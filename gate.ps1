@@ -1,4 +1,4 @@
-param([string]$Goal, [string]$Probe, [string]$Only)
+param([string]$Goal, [string]$Only)
 
 $ErrorActionPreference = 'Continue'
 $gateCommon = $env:GATE_LIBRARY
@@ -28,14 +28,31 @@ $env:TZ = 'UTC'
 $env:CI = 'true'
 if ($env:TZ -ne 'UTC') { Write-Host 'GATE: FAILED (TZ pin)'; exit 1 }
 Set-Location $repo
-if ($Only -and -not $Probe) { Write-Host 'PROBE: FAILED (-Only names the one test a probe runs, so it needs -Probe)'; exit 1 }
-if ($Probe -and ($Probe.Trim() -cne 'npm test' -or [string]::IsNullOrWhiteSpace($Only) -or $Only.Contains(','))) {
-    Write-Host "PROBE: FAILED (a probe runs exactly one test: -Probe 'npm test' -Only '<the test's name>')"
-    exit 1
+if ($Only) {
+    $probeFile, $probeTest = $Only -split '::', 2
+    $probeFile = "$probeFile".Trim().Replace('\', '/')
+    $probeTest = "$probeTest".Trim()
+    $testFile = $probeFile -replace '^src/', 'dist-test/' -replace '\.ts$', '.js'
+    $testFiles = @([regex]::Matches((Get-Content -LiteralPath (Join-Path $repo 'package.json') -Raw | ConvertFrom-Json).scripts.test, 'dist-test/\S+?\.test\.js') | ForEach-Object Value)
+    if (-not $probeTest -or $probeTest.Contains(',') -or $testFile -notin $testFiles -or
+            -not (Test-Path -LiteralPath (Join-Path $repo $probeFile) -PathType Leaf)) {
+        Write-Host "PROBE: FAILED (a probe runs exactly one test, named by the file it lives in: -Only '<a src/**/*.test.ts file npm test runs>::<the test's name>')"
+        exit 1
+    }
+    Write-Host "PROBE: running one test, '$probeTest' of $probeFile; no gate record or verdict is written"
+    $global:LASTEXITCODE = $null
+    npx tsc -p tsconfig.test.json
+    if ($global:LASTEXITCODE -ne 0) { Write-Host "PROBE: FAILED (tsc -p tsconfig.test.json exit $global:LASTEXITCODE)"; exit 1 }
+    $global:LASTEXITCODE = $null
+    $testOutput = (node --test --test-reporter=tap "--test-name-pattern=$probeTest" $testFile 2>&1 | Out-String)
+    $testExit = $global:LASTEXITCODE
+    Write-Host $testOutput
+    $passed = if ($testOutput -match '(?m)^# pass (\d+)') { [int]$Matches[1] } else { 0 }
+    if ($testExit -ne 0 -or $passed -ne 1) { Write-Host "PROBE: FAILED (a probe runs one test, and '$probeTest' passed $passed, exit $testExit)"; exit 1 }
+    Write-Host 'PROBE: PASSED for the one test named; no verdict was saved'
+    exit 0
 }
-$gateState = @{ Probe = $Probe }
-if ((Get-Command Initialize-GateState).Parameters.ContainsKey('Only')) { $gateState['Only'] = $Only }
-Initialize-GateState 'Modules' $repo @gateState
+Initialize-GateState 'Modules' $repo
 Resolve-OwedSteps
 Invoke-CatalogSteps
 
@@ -62,20 +79,7 @@ if (-not (Test-StepCarried 'npm run audit')) {
     $null = Test-Exit 'npm run audit'
 }
 
-if ($Only -and -not (Test-StepCarried 'npm test')) {
-    $testFiles = @([regex]::Matches((Get-Content -LiteralPath (Join-Path $repo 'package.json') -Raw | ConvertFrom-Json).scripts.test, 'dist-test/\S+?\.test\.js') | ForEach-Object Value)
-    $global:LASTEXITCODE = $null
-    npx tsc -p tsconfig.test.json
-    if ($global:LASTEXITCODE -ne 0) { Stop-Gate 'npm test' "tsc -p tsconfig.test.json exit $global:LASTEXITCODE" }
-    $global:LASTEXITCODE = $null
-    $testOutput = (node --test --test-reporter=tap "--test-name-pattern=$Only" @testFiles 2>&1 | Out-String)
-    $testExit = $global:LASTEXITCODE
-    Write-Host $testOutput
-    $passed = if ($testOutput -match '(?m)^# pass (\d+)') { [int]$Matches[1] } else { 0 }
-    if ($testExit -ne 0 -or $passed -ne 1) { Stop-Gate 'npm test' "a probe runs one test, and '$Only' passed $passed (exit $testExit)" }
-    Write-Row 'npm test' 'PASS' "one test, '$Only', passed"
-}
-elseif (-not (Test-StepCarried 'npm test')) {
+if (-not (Test-StepCarried 'npm test')) {
     $global:LASTEXITCODE = $null
     npm test
     $null = Test-Exit 'npm test'
