@@ -52,6 +52,7 @@ if ($Only) {
     Write-Host 'PROBE: PASSED for the one test named; no verdict was saved'
     exit 0
 }
+exit (Invoke-Gate {
 Initialize-GateState 'Modules' $repo
 Resolve-OwedSteps
 Invoke-CatalogSteps
@@ -98,3 +99,4 @@ else {
 
 Write-Row 'Publish when the version is new' 'NOT RUN' 'delivery step, not a check'
 Complete-Gate
+})
