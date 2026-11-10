@@ -66,24 +66,24 @@ Write-Row 'node_modules install markers' 'PASS' 'tsc.cmd present; every package 
 if (-not (Test-StepCarried 'npm run lint')) {
     $global:LASTEXITCODE = $null
     npm run lint
-    $null = Test-Exit 'npm run lint'
+    Assert-StepExit 'npm run lint'
 }
 
 if (-not (Test-StepCarried 'npm run build')) {
     $global:LASTEXITCODE = $null
     npm run build
-    $null = Test-Exit 'npm run build'
+    Assert-StepExit 'npm run build'
 }
 if (-not (Test-StepCarried 'npm run audit')) {
     $global:LASTEXITCODE = $null
     npm run audit
-    $null = Test-Exit 'npm run audit'
+    Assert-StepExit 'npm run audit'
 }
 
 if (-not (Test-StepCarried 'npm test')) {
     $global:LASTEXITCODE = $null
     npm test
-    $null = Test-Exit 'npm test'
+    Assert-StepExit 'npm test'
 }
 
 if (Test-StepCarried $sonarIssues) {
@@ -93,7 +93,7 @@ else {
     $sonarStartedAt = [DateTimeOffset]::UtcNow
     $global:LASTEXITCODE = $null
     sonar-scanner -D"sonar.projectKey=crgolden_Modules" -D"sonar.organization=crgolden" -D"sonar.host.url=https://sonarcloud.io" -D"sonar.exclusions=**/node_modules/**,**/*.d.ts,dist/**,dist-test/**" -D"sonar.test.inclusions=**/*.test.ts" -D"sonar.javascript.lcov.reportPaths=coverage/lcov.info" -D"sonar.scanner.skipJreProvisioning=true" -D"sonar.qualitygate.wait=true" -D"sonar.branch.name=$sonarBranch"
-    $null = Test-Exit $sonarStep
+    Assert-StepExit $sonarStep
     Test-SonarIssues $sonarIssues 'crgolden_Modules' $sonarBranch $sonarStartedAt
 }
 
