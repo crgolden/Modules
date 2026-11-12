@@ -39,6 +39,8 @@ const STATIC_CLASS_ATTRIBUTE = /(?:^|\s)class\s*=\s*(?:"([^"]*)"|'([^']*)')/;
 const DECLARED_PROPERTY = /(?:^|;)\s*([a-z-]+)\s*:/g;
 const VARIANT_SEPARATOR = ':';
 const Z_INDEX_UTILITY = /^-?z-/;
+export const SCOPE_MARKERS = ['group', 'peer'] as const;
+const MARKER_VARIANT = new RegExp(String.raw`^\.(${SCOPE_MARKERS.join('|')})-[a-z0-9-]*(?:\[[^\]]*\])?:`, 'i');
 const LADDER_Z_INDEX = /(?:^|;)\s*z-index\s*:\s*var\(\s*--z-/;
 
 const escapeForRegExp = (className: string): string => className.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
@@ -81,7 +83,14 @@ function selectorsMentioning(css: string, className: string): string[] {
     .filter((selector) => mentions.test(selector));
 }
 
-function selectorPartsFor(css: string, className: string): { parts: string[]; unscoped: string[] } {
+function usedScopeMarker(className: string, usedClasses: ReadonlyMap<string, number>): string | null {
+  const variant = MARKER_VARIANT.exec(className);
+  if (variant === null) return null;
+  const marker = `.${variant[1].toLowerCase()}`;
+  return usedClasses.has(marker) ? marker : null;
+}
+
+function selectorPartsFor(css: string, className: string, marker: string | null): { parts: string[]; unscoped: string[] } {
   const escaped = escapeForRegExp(className);
   const mentions = mentionOf(className);
   const subjectCompound = new RegExp(`(^|[ >+~])[^ >+~]*${escaped}(?![a-z0-9-])[^ >+~]*$`, 'i');
@@ -89,8 +98,11 @@ function selectorPartsFor(css: string, className: string): { parts: string[]; un
   const parts = selectorsMentioning(css, className)
     .flatMap((selector) => splitSelectorList(selector).map((part) => part.trim()))
     .filter((part) => mentions.test(part));
+  const scopedByOwnMarker = (part: string): boolean => marker !== null && mentionOf(marker).test(part.replace(mentions, ''));
   const reaches = (part: string): boolean =>
-    (subjectCompound.test(part) && !/[ >+~]/.test(part.replace(mentions, ''))) || actsAsAncestor.test(part);
+    (subjectCompound.test(part) && !/[ >+~]/.test(part.replace(mentions, ''))) ||
+    actsAsAncestor.test(part) ||
+    scopedByOwnMarker(part);
   return { parts, unscoped: parts.filter(reaches) };
 }
 
@@ -147,7 +159,8 @@ function reachabilityFailures(
   const allowedScopedSeen: string[] = [];
   for (const [className, usages] of [...usedClasses].sort(([a], [b]) => a.localeCompare(b))) {
     if (allowedUndeclared.has(className)) continue;
-    const found = stylesheets.map((css) => selectorPartsFor(css, className));
+    const marker = usedScopeMarker(className, usedClasses);
+    const found = stylesheets.map((css) => selectorPartsFor(css, className, marker));
     if (!found.some(({ parts }) => parts.length > 0)) {
       failures.push(
         `${className}: used ${usages} time(s) and named in no shipped selector. ` +

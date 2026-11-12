@@ -1,9 +1,9 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "outDir": "dist-test",
-    "sourceMap": true
+    "rootDir": ".",
+    "noEmit": true
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "integration/**/*.ts"],
   "exclude": ["src/primitives/**", "src/angular/**"]
 }

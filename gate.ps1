@@ -9,13 +9,14 @@ if (-not $gateCommon -or -not (Test-Path -LiteralPath $gateCommon -PathType Leaf
 . $gateCommon
 
 Register-GateSteps @('node_modules install markers', 'npm run lint', 'npm run build', 'npm run audit', 'npm test',
-    'SonarCloud analysis', 'Fail on open Sonar issues')
+    'npm run test:integration', 'SonarCloud analysis', 'Fail on open Sonar issues')
 Register-StepInputs @{
     'node_modules install markers' = @('package.json', 'package-lock.json')
     'npm run lint'                 = @('*')
     'npm run build'                = @('*')
     'npm run audit'                = @('package.json', 'package-lock.json', 'src/npm-audit/*')
-    'npm test'                     = @('*')
+    'npm test'                     = @('*', '!integration/*')
+    'npm run test:integration'     = @('*')
     'SonarCloud analysis'          = @('*')
     'Fail on open Sonar issues'    = @('*')
 }
@@ -41,8 +42,8 @@ if ($Only) {
     }
     Write-Host "PROBE: running one test, '$probeTest' of $probeFile; no gate record or verdict is written"
     $global:LASTEXITCODE = $null
-    npx tsc -p tsconfig.test.json
-    if ($global:LASTEXITCODE -ne 0) { Write-Host "PROBE: FAILED (tsc -p tsconfig.test.json exit $global:LASTEXITCODE)"; exit 1 }
+    npx tsc -p tsconfig.unit.json
+    if ($global:LASTEXITCODE -ne 0) { Write-Host "PROBE: FAILED (tsc -p tsconfig.unit.json exit $global:LASTEXITCODE)"; exit 1 }
     $global:LASTEXITCODE = $null
     $testOutput = (node --test --test-reporter=tap "--test-name-pattern=$probeTest" $testFile 2>&1 | Out-String)
     $testExit = $global:LASTEXITCODE
@@ -86,13 +87,19 @@ if (-not (Test-StepCarried 'npm test')) {
     Assert-StepExit 'npm test'
 }
 
+if (-not (Test-StepCarried 'npm run test:integration')) {
+    $global:LASTEXITCODE = $null
+    npm run test:integration
+    Assert-StepExit 'npm run test:integration'
+}
+
 if (Test-StepCarried $sonarIssues) {
     $null = Test-StepCarried $sonarStep
 }
 else {
     $sonarStartedAt = [DateTimeOffset]::UtcNow
     $global:LASTEXITCODE = $null
-    sonar-scanner -D"sonar.projectKey=crgolden_Modules" -D"sonar.organization=crgolden" -D"sonar.host.url=https://sonarcloud.io" -D"sonar.exclusions=**/node_modules/**,**/*.d.ts,dist/**,dist-test/**" -D"sonar.test.inclusions=**/*.test.ts" -D"sonar.javascript.lcov.reportPaths=coverage/lcov.info" -D"sonar.scanner.skipJreProvisioning=true" -D"sonar.qualitygate.wait=true" -D"sonar.branch.name=$sonarBranch"
+    sonar-scanner -D"sonar.projectKey=crgolden_Modules" -D"sonar.organization=crgolden" -D"sonar.host.url=https://sonarcloud.io" -D"sonar.exclusions=**/node_modules/**,**/*.d.ts,dist/**,dist-test/**,dist-integration/**" -D"sonar.test.inclusions=**/*.test.ts" -D"sonar.javascript.lcov.reportPaths=coverage/lcov.info" -D"sonar.scanner.skipJreProvisioning=true" -D"sonar.qualitygate.wait=true" -D"sonar.branch.name=$sonarBranch"
     Assert-StepExit $sonarStep
     Test-SonarIssues $sonarIssues 'crgolden_Modules' $sonarBranch $sonarStartedAt
 }

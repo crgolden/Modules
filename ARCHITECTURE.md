@@ -18,9 +18,12 @@ whole package.
 | `tsconfig.json` | CommonJS build of everything except `primitives` and `angular`, excluding tests and recorded fixtures |
 | `tsconfig.primitives.json` | `ngc` build of `primitives` and `angular` in partial-Ivy form, which the consuming app's Angular build links |
 | `tsconfig.esm.json` | the ES-module build of `scroll-restoration` |
-| `tsconfig.test.json` | compiles sources and tests to `dist-test/` for `npm test` |
+| `tsconfig.unit.json` | compiles sources and unit tests to `dist-test/` for `npm test` |
+| `tsconfig.integration.json` | compiles `integration/` to `dist-integration/` for `npm run test:integration` |
+| `tsconfig.test.json` | types `src` and `integration/` for `npm run lint`; emits nothing |
+| `integration/` | the tests that start a process: each command run as a child process |
 | `eslint.config.js`, `eslint-sonar.config.cjs`, `eslint-sonar.rules.json` | `npm run lint`: SonarCloud's rules run locally |
-| `.github/workflows/publish.yml` | lint, build, audit, test, analyze, then publish a new version |
+| `.github/workflows/publish.yml` | lint, build, audit, unit and integration tests, analyze, then publish a new version |
 | `gate.ps1` | the maintainers' local gate (README.md, "Gate") |
 
 ## Invariants

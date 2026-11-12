@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BUILT_DIRECTORY, SOURCE_DIRECTORY, THEME_STYLESHEET, checkDesignUtilities } from './check';
-import { COMMAND_ENTRY_POINT, FAILED_EXIT_CODE, PASSED_EXIT_CODE, runDesignUtilitiesCheck } from './cli';
+import { FAILED_EXIT_CODE, PASSED_EXIT_CODE, runDesignUtilitiesCheck } from './cli';
 import { newText } from '../testing';
 
 interface UnbuiltApp {
@@ -51,22 +50,4 @@ test('the command prints the whole report and exits non-zero for an app with no 
   rmSync(repoRoot, { recursive: true, force: true });
   assert.equal(exitCode, FAILED_EXIT_CODE);
   assert.deepEqual(printed, expectedReport);
-});
-
-test('the installed command checks the app it is started in and passes a built one', () => {
-  const repoRoot = builtApp();
-
-  const run = spawnSync(process.execPath, [COMMAND_ENTRY_POINT], { cwd: repoRoot });
-
-  rmSync(repoRoot, { recursive: true, force: true });
-  assert.equal(run.status, PASSED_EXIT_CODE);
-});
-
-test('the installed command exits non-zero in an app with no build', () => {
-  const { repoRoot } = unbuiltApp();
-
-  const run = spawnSync(process.execPath, [COMMAND_ENTRY_POINT], { cwd: repoRoot });
-
-  rmSync(repoRoot, { recursive: true, force: true });
-  assert.equal(run.status, FAILED_EXIT_CODE);
 });

@@ -82,6 +82,7 @@ out
 .nuxt
 dist
 dist-test
+dist-integration
 .output
 
 # SonarScanner working directory

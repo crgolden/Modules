@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   BUILT_DIRECTORY,
+  SCOPE_MARKERS,
   SOURCE_DIRECTORY,
   THEME_STYLESHEET,
   LITERAL_COLOR,
@@ -69,6 +70,36 @@ test('a class name carrying an escaped plus under an ancestor still fails', () =
   );
 
   assert.deepEqual(result.failures.map((failure) => failure.split(':')[0]), [`.${utility.name}`]);
+});
+
+function markerVariantUtility(): { marker: string; name: string; stylesheet: SourceFile } {
+  const marker = newMemberOf(SCOPE_MARKERS);
+  const name = `${marker}-hover:${newText()}`;
+  return {
+    marker,
+    name,
+    stylesheet: builtStylesheet(`:is(:where(.${marker}):hover .${name.replace(':', '\\:')}){text-decoration-line:underline}`),
+  };
+}
+
+test('a marker variant is reached under the marker class it names', () => {
+  const utility = markerVariantUtility();
+
+  const result = analyze(
+    [utility.stylesheet],
+    [template(`<a class="${utility.marker}"><span class="${utility.name}"></span></a>`)],
+    [],
+  );
+
+  assert.deepEqual(result.failures, []);
+});
+
+test('a marker variant whose marker class no template uses still fails', () => {
+  const utility = markerVariantUtility();
+
+  const result = analyze([utility.stylesheet], [template(`<a><span class="${utility.name}"></span></a>`)], []);
+
+  assert.deepEqual(result.failures.map((failure) => failure.split(': ')[0]), [`.${utility.name}`]);
 });
 
 test('a host class literal is read like a template class', () => {

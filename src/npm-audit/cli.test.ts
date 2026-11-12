@@ -1,14 +1,11 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EXCEPTIONS_FILE, noVerdictLine, staleLine, type AuditException } from './audit';
 import {
-  COMMAND_ENTRY_POINT,
   FAILED_EXIT_CODE,
-  NPM_EXEC_PATH_VARIABLE,
   PASSED_EXIT_CODE,
   REPOSITORY_MARKER,
   auditDisabledLine,
@@ -121,15 +118,4 @@ test('must-block: run outside npm, the audit has no report and the check is no v
   rmSync(packageRoot, { recursive: true, force: true });
   assert.equal(exitCode, FAILED_EXIT_CODE);
   assert.deepEqual(printed, [noVerdictLine()]);
-});
-
-test('must-block: the installed command started without npm exits non-zero', () => {
-  const packageRoot = emptyPackage();
-  const environment = { ...process.env };
-  delete environment[NPM_EXEC_PATH_VARIABLE];
-
-  const run = spawnSync(process.execPath, [COMMAND_ENTRY_POINT], { cwd: packageRoot, env: environment });
-
-  rmSync(packageRoot, { recursive: true, force: true });
-  assert.equal(run.status, FAILED_EXIT_CODE);
 });

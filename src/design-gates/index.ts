@@ -1,4 +1,12 @@
-export { analyzeUtilities, classesUsedIn, hostClassesIn, splitSelectorList, withoutComments, withoutSelectorEscapes } from './utilities';
+export {
+  SCOPE_MARKERS,
+  analyzeUtilities,
+  classesUsedIn,
+  hostClassesIn,
+  splitSelectorList,
+  withoutComments,
+  withoutSelectorEscapes,
+} from './utilities';
 export type { SourceFile, UtilitiesOptions, UtilitiesResult } from './utilities';
 export { BUILD_TIME_THEME_NAMESPACES, themeTokensIn, unconsumedThemeTokens } from './theme-tokens';
 export type { UnconsumedThemeTokensOptions } from './theme-tokens';
