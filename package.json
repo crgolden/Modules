@@ -78,23 +78,23 @@
   },
   "devDependencies": {
     "@angular-eslint/template-parser": "^22.6.0",
-    "@angular/common": "^22.2.4",
-    "@angular/compiler": "^22.2.4",
-    "@angular/compiler-cli": "^22.2.4",
-    "@angular/core": "^22.2.4",
-    "@angular/router": "^22.2.4",
-    "@playwright/test": "^1.64.1",
+    "@angular/common": "^22.2.6",
+    "@angular/compiler": "^22.2.6",
+    "@angular/compiler-cli": "^22.2.6",
+    "@angular/core": "^22.2.6",
+    "@angular/router": "^22.2.6",
+    "@playwright/test": "^1.65.0",
     "@types/node": "^26.6.6",
     "@types/pg": "^8.23.1",
-    "@typescript-eslint/parser": "^8.72.1",
+    "@typescript-eslint/parser": "^8.72.2",
     "c8": "^12.0.0",
     "eslint": "^10.14.0",
-    "eslint-plugin-import-x": "4.17.1",
+    "eslint-plugin-import-x": "4.18.1",
     "eslint-plugin-sonarjs": "4.2.2",
     "eslint-plugin-unicorn": "78.0.0",
     "rxjs": "~7.8.2",
     "typescript": "~6.0.3",
-    "typescript-eslint": "8.72.1"
+    "typescript-eslint": "8.72.2"
   },
   "dependencies": {
     "pg": "^8.23.1"
