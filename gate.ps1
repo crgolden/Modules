@@ -8,19 +8,17 @@ if (-not $gateCommon -or -not (Test-Path -LiteralPath $gateCommon -PathType Leaf
 }
 . $gateCommon
 
-Register-GateSteps @('node_modules install markers', 'npm run lint', 'npm run build', 'npm run audit', 'npm test',
+Register-GateStep @('node_modules install markers', 'npm run lint', 'npm run build', 'npm run audit', 'npm test',
     'npm run test:integration', 'SonarCloud analysis', 'Fail on open Sonar issues')
-Register-StepInputs @{
-    'node_modules install markers' = @('package.json', 'package-lock.json')
-    'npm run lint'                 = @('*')
-    'npm run build'                = @('*')
-    'npm run audit'                = @('package.json', 'package-lock.json', 'src/npm-audit/*')
-    'npm test'                     = @('*', '!integration/*')
-    'npm run test:integration'     = @('*')
-    'SonarCloud analysis'          = @('*')
-    'Fail on open Sonar issues'    = @('*')
-}
-Register-VolatileSteps @('npm run audit')
+Register-StepInput 'node_modules install markers' @('package.json', 'package-lock.json')
+Register-StepInput 'npm run lint' @('*')
+Register-StepInput 'npm run build' @('*')
+Register-StepInput 'npm run audit' @('package.json', 'package-lock.json', 'src/npm-audit/*')
+Register-StepInput 'npm test' @('*', '!integration/*')
+Register-StepInput 'npm run test:integration' @('*')
+Register-StepInput 'SonarCloud analysis' @('*')
+Register-StepInput 'Fail on open Sonar issues' @('*')
+Register-VolatileStep @('npm run audit')
 $repo = $PSScriptRoot
 $sonarBranch = "branch-local-$($env:COMPUTERNAME.ToLowerInvariant())"
 $sonarStep = "SonarCloud analysis (sonar-scanner, branch $sonarBranch, quality gate waited)"
@@ -55,8 +53,8 @@ if ($Only) {
 }
 exit (Invoke-Gate {
 Initialize-GateState 'Modules' $repo
-Resolve-OwedSteps
-Invoke-CatalogSteps
+Get-OwedStep | Register-OwedStep
+Invoke-GateLibraryStep
 
 $installed = (Test-Path (Join-Path $repo 'node_modules\.package-lock.json')) -and
     (Test-Path (Join-Path $repo 'node_modules\.bin\tsc.cmd'))
@@ -101,7 +99,7 @@ else {
     $global:LASTEXITCODE = $null
     sonar-scanner -D"sonar.projectKey=crgolden_Modules" -D"sonar.organization=crgolden" -D"sonar.host.url=https://sonarcloud.io" -D"sonar.exclusions=**/node_modules/**,**/*.d.ts,dist/**,dist-test/**,dist-integration/**" -D"sonar.test.inclusions=**/*.test.ts" -D"sonar.javascript.lcov.reportPaths=coverage/lcov.info" -D"sonar.scanner.skipJreProvisioning=true" -D"sonar.qualitygate.wait=true" -D"sonar.branch.name=$sonarBranch"
     Assert-StepExit $sonarStep
-    Test-SonarIssues $sonarIssues 'crgolden_Modules' $sonarBranch $sonarStartedAt
+    Assert-NoOpenSonarIssue $sonarIssues 'crgolden_Modules' $sonarBranch $sonarStartedAt
 }
 
 Write-Row 'Publish when the version is new' 'NOT RUN' 'delivery step, not a check'
