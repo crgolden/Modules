@@ -97,7 +97,7 @@ if (Test-StepCarried $sonarIssues) {
 else {
     $sonarStartedAt = [DateTimeOffset]::UtcNow
     $global:LASTEXITCODE = $null
-    sonar-scanner -D"sonar.projectKey=crgolden_Modules" -D"sonar.organization=crgolden" -D"sonar.host.url=https://sonarcloud.io" -D"sonar.exclusions=**/node_modules/**,**/*.d.ts,dist/**,dist-test/**,dist-integration/**" -D"sonar.test.inclusions=**/*.test.ts" -D"sonar.javascript.lcov.reportPaths=coverage/lcov.info" -D"sonar.scanner.skipJreProvisioning=true" -D"sonar.qualitygate.wait=true" -D"sonar.branch.name=$sonarBranch"
+    sonar-scanner -D"sonar.projectKey=crgolden_Modules" -D"sonar.organization=crgolden" -D"sonar.host.url=https://sonarcloud.io" -D"sonar.exclusions=**/node_modules/**,**/*.d.ts,dist/**,dist-test/**,dist-integration/**" -D"sonar.test.inclusions=**/*.test.ts" -D"sonar.javascript.lcov.reportPaths=coverage/lcov.info" -D"sonar.scanner.skipJreProvisioning=true" -D"sonar.scm.use.blame.algorithm=GIT_NATIVE_BLAME" -D"sonar.qualitygate.wait=true" -D"sonar.branch.name=$sonarBranch"
     Assert-StepExit $sonarStep
     Assert-NoOpenSonarIssue $sonarIssues 'crgolden_Modules' $sonarBranch $sonarStartedAt
 }
