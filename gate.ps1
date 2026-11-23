@@ -24,7 +24,6 @@ $sonarBranch = "branch-local-$($env:COMPUTERNAME.ToLowerInvariant())"
 $sonarStep = "SonarCloud analysis (sonar-scanner, branch $sonarBranch, quality gate waited)"
 $sonarIssues = 'Fail on open Sonar issues'
 $env:TZ = 'UTC'
-$env:CI = 'true'
 if ($env:TZ -ne 'UTC') { Write-Host 'GATE: FAILED (TZ pin)'; exit 1 }
 Set-Location $repo
 if ($Only) {
