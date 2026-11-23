@@ -56,36 +56,39 @@ Initialize-GateState 'Modules' $repo
 Get-OwedStep | Register-OwedStep
 Invoke-GateLibraryStep
 
-$installed = (Test-Path (Join-Path $repo 'node_modules\.package-lock.json')) -and
-    (Test-Path (Join-Path $repo 'node_modules\.bin\tsc.cmd'))
-if (-not $installed) { Stop-Gate 'node_modules install markers' 'incomplete install; run npm ci deliberately first' }
-Assert-NodeInstallCurrent $repo
-Write-Row 'node_modules install markers' 'PASS' 'tsc.cmd present; every package matches package-lock.json'
+$markers = 'node_modules install markers'
+Invoke-GateStep -Name $markers -Always -Body {
+    $installed = (Test-Path (Join-Path $repo 'node_modules\.package-lock.json')) -and
+        (Test-Path (Join-Path $repo 'node_modules\.bin\tsc.cmd'))
+    if (-not $installed) { Stop-Gate $markers 'incomplete install; run npm ci deliberately first' }
+    Assert-NodeInstallCurrent $repo
+    Write-Row $markers 'PASS' 'tsc.cmd present; every package matches package-lock.json'
+}
 
-if (-not (Test-StepCarried 'npm run lint')) {
+Invoke-GateStep -Name 'npm run lint' -Needs @($markers) -Body {
     $global:LASTEXITCODE = $null
     npm run lint
     Assert-StepExit 'npm run lint'
 }
 
-if (-not (Test-StepCarried 'npm run build')) {
+Invoke-GateStep -Name 'npm run build' -Needs @($markers) -Body {
     $global:LASTEXITCODE = $null
     npm run build
     Assert-StepExit 'npm run build'
 }
-if (-not (Test-StepCarried 'npm run audit')) {
+Invoke-GateStep -Name 'npm run audit' -Needs @('npm run build') -Body {
     $global:LASTEXITCODE = $null
     npm run audit
     Assert-StepExit 'npm run audit'
 }
 
-if (-not (Test-StepCarried 'npm test')) {
+Invoke-GateStep -Name 'npm test' -Needs @('npm run build') -Body {
     $global:LASTEXITCODE = $null
     npm test
     Assert-StepExit 'npm test'
 }
 
-if (-not (Test-StepCarried 'npm run test:integration')) {
+Invoke-GateStep -Name 'npm run test:integration' -Needs @('npm run build') -Body {
     $global:LASTEXITCODE = $null
     npm run test:integration
     Assert-StepExit 'npm run test:integration'
@@ -96,10 +99,14 @@ if (Test-StepCarried $sonarIssues) {
 }
 else {
     $sonarStartedAt = [DateTimeOffset]::UtcNow
-    $global:LASTEXITCODE = $null
-    sonar-scanner -D"sonar.projectKey=crgolden_Modules" -D"sonar.organization=crgolden" -D"sonar.host.url=https://sonarcloud.io" -D"sonar.exclusions=**/node_modules/**,**/*.d.ts,dist/**,dist-test/**,dist-integration/**" -D"sonar.test.inclusions=**/*.test.ts" -D"sonar.javascript.lcov.reportPaths=coverage/lcov.info" -D"sonar.scanner.skipJreProvisioning=true" -D"sonar.scm.use.blame.algorithm=GIT_NATIVE_BLAME" -D"sonar.qualitygate.wait=true" -D"sonar.branch.name=$sonarBranch"
-    Assert-StepExit $sonarStep
-    Assert-NoOpenSonarIssue $sonarIssues 'crgolden_Modules' $sonarBranch $sonarStartedAt
+    Invoke-GateStep -Name $sonarStep -Needs @('npm test') -Always -Body {
+        $global:LASTEXITCODE = $null
+        sonar-scanner -D"sonar.projectKey=crgolden_Modules" -D"sonar.organization=crgolden" -D"sonar.host.url=https://sonarcloud.io" -D"sonar.exclusions=**/node_modules/**,**/*.d.ts,dist/**,dist-test/**,dist-integration/**" -D"sonar.test.inclusions=**/*.test.ts" -D"sonar.javascript.lcov.reportPaths=coverage/lcov.info" -D"sonar.scanner.skipJreProvisioning=true" -D"sonar.scm.use.blame.algorithm=GIT_NATIVE_BLAME" -D"sonar.qualitygate.wait=true" -D"sonar.branch.name=$sonarBranch"
+        Assert-StepExit $sonarStep
+    }
+    Invoke-GateStep -Name $sonarIssues -Needs @($sonarStep) -Always -Body {
+        Assert-NoOpenSonarIssue $sonarIssues 'crgolden_Modules' $sonarBranch $sonarStartedAt
+    }
 }
 
 Write-Row 'Publish when the version is new' 'NOT RUN' 'delivery step, not a check'
