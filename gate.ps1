@@ -98,7 +98,7 @@ if (Test-StepCarried $sonarIssues) {
 }
 else {
     $sonarStartedAt = [DateTimeOffset]::UtcNow
-    Invoke-GateStep -Name $sonarStep -Needs @('npm test') -Always -Body {
+    Invoke-GateStep -Name $sonarStep -Needs @('npm run build') -Always -Body {
         $global:LASTEXITCODE = $null
         sonar-scanner -D"sonar.projectKey=crgolden_Modules" -D"sonar.organization=crgolden" -D"sonar.host.url=https://sonarcloud.io" -D"sonar.exclusions=**/node_modules/**,**/*.d.ts,dist/**,dist-test/**,dist-integration/**" -D"sonar.test.inclusions=**/*.test.ts" -D"sonar.javascript.lcov.reportPaths=coverage/lcov.info" -D"sonar.scanner.skipJreProvisioning=true" -D"sonar.scm.use.blame.algorithm=GIT_NATIVE_BLAME" -D"sonar.qualitygate.wait=true" -D"sonar.branch.name=$sonarBranch"
         Assert-StepExit $sonarStep
